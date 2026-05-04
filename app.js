@@ -378,9 +378,14 @@ async function loadNirxDatasetFromReaders(parts) {
     sources.samplingRateFrom = hdr.name;
     const parsedWavelengths = parseHdrWavelengths(hdrT);
     if (parsedWavelengths.length >= 2) wavelengthsNm = parsedWavelengths.slice(0, 2);
+    const activeChannelIndices = parseHdrActiveChannelIndices(hdrT);
+    const hdrChannelLabels = extractHdrChannelLabels(hdrT);
+    let channelCountHint = activeChannelIndices.length
+      || hdrChannelLabels.length
+      || parseHdrChannelDistancesMm(hdrT).length
+      || parseHdrChannelCountHint(hdrT);
 
     const matBuf = probeMat ? await probeMat.readArrayBuffer() : null;
-    let channelCountHint = parseHdrChannelCountHint(hdrT);
     if (matBuf) {
       channelLabels = extractChannelLabels(matBuf, channelCountHint || undefined);
       channelLabelSource = "probeInfo.mat";
@@ -393,10 +398,16 @@ async function loadNirxDatasetFromReaders(parts) {
     }
 
     const wl1T = await wl1.readText();
-    data.wl1 = parseMatrix(wl1T, channelCountHint);
+    data.wl1 = parseMatrix(wl1T);
 
     const wl2T = await wl2.readText();
-    data.wl2 = parseMatrix(wl2T, channelCountHint);
+    data.wl2 = parseMatrix(wl2T);
+
+    const rawChannelCount = inferMatrixChannelCount(data.wl1, data.wl2);
+    if (shouldUseActiveChannelSubset(activeChannelIndices, rawChannelCount)) {
+      data.wl1 = selectMatrixColumns(data.wl1, activeChannelIndices);
+      data.wl2 = selectMatrixColumns(data.wl2, activeChannelIndices);
+    }
 
     const actualChannelCount = inferMatrixChannelCount(data.wl1, data.wl2);
     channelDistancesMm = normalizeNumericList(
@@ -407,12 +418,24 @@ async function loadNirxDatasetFromReaders(parts) {
     if (channelLabels.length) {
       channelLabels = channelLabels.slice(0, actualChannelCount);
       if (channelLabels.length !== actualChannelCount) {
-        channelLabels = buildDefaultChannelLabels(actualChannelCount);
-        channelLabelSource = "default (probeInfo channel count mismatch)";
-        sources.channelLabelsFrom = "default";
+        channelLabels = hdrChannelLabels.slice(0, actualChannelCount);
+        if (channelLabels.length === actualChannelCount) {
+          channelLabelSource = "hdr S-D-Key";
+          sources.channelLabelsFrom = hdr.name;
+        } else {
+          channelLabels = buildDefaultChannelLabels(actualChannelCount);
+          channelLabelSource = "default (probeInfo channel count mismatch)";
+          sources.channelLabelsFrom = "default";
+        }
       }
     } else {
-      channelLabels = buildDefaultChannelLabels(actualChannelCount);
+      channelLabels = hdrChannelLabels.slice(0, actualChannelCount);
+      if (channelLabels.length === actualChannelCount) {
+        channelLabelSource = "hdr S-D-Key";
+        sources.channelLabelsFrom = hdr.name;
+      } else {
+        channelLabels = buildDefaultChannelLabels(actualChannelCount);
+      }
     }
 
     const evtT = evt ? await evt.readText() : null;
@@ -2125,6 +2148,66 @@ function parseHdrChannelCountHint(text) {
   return count > 0 ? count : null;
 }
 
+function parseHdrChannelKeyEntries(text) {
+  if (!text) return [];
+  const match = text.match(/S-D-Key\s*=\s*"([^"]*)"/i);
+  if (!match) return [];
+  return match[1]
+    .split(",")
+    .map(entry => entry.trim())
+    .filter(Boolean)
+    .map(entry => {
+      const parts = entry.match(/(\d+)-(\d+):(\d+)/);
+      if (!parts) return null;
+      return {
+        source: Number(parts[1]),
+        detector: Number(parts[2]),
+        columnIndex: Number(parts[3]) - 1
+      };
+    })
+    .filter(entry => entry && Number.isInteger(entry.columnIndex) && entry.columnIndex >= 0);
+}
+
+function parseHdrMaskValues(text) {
+  if (!text) return [];
+  const match = text.match(/S-D-Mask\s*=\s*"#([\s\S]*?)#"/i);
+  if (!match) return [];
+  return match[1]
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .flatMap(line => line.split(/\s+/))
+    .map(Number)
+    .filter(Number.isFinite);
+}
+
+function parseHdrActiveChannelIndices(text) {
+  const keyEntries = parseHdrChannelKeyEntries(text);
+  const maskValues = parseHdrMaskValues(text);
+  if (!maskValues.length) return [];
+
+  if (keyEntries.length === maskValues.length) {
+    return keyEntries
+      .filter((entry, idx) => maskValues[idx] !== 0)
+      .map(entry => entry.columnIndex)
+      .sort((a, b) => a - b);
+  }
+
+  return maskValues
+    .map((value, idx) => (value !== 0 ? idx : -1))
+    .filter(idx => idx >= 0);
+}
+
+function extractHdrChannelLabels(text) {
+  const keyEntries = parseHdrChannelKeyEntries(text);
+  const activeIndices = new Set(parseHdrActiveChannelIndices(text));
+  if (!keyEntries.length || !activeIndices.size) return [];
+  return keyEntries
+    .filter(entry => activeIndices.has(entry.columnIndex))
+    .sort((a, b) => a.columnIndex - b.columnIndex)
+    .map(entry => "S" + entry.source + " D" + entry.detector);
+}
+
 function inferMatrixChannelCount() {
   for (let i = 0; i < arguments.length; i++) {
     const matrix = arguments[i];
@@ -2133,6 +2216,19 @@ function inferMatrixChannelCount() {
     }
   }
   return 0;
+}
+
+function shouldUseActiveChannelSubset(activeIndices, matrixColumnCount) {
+  return Array.isArray(activeIndices)
+    && activeIndices.length > 0
+    && Number.isFinite(matrixColumnCount)
+    && matrixColumnCount > activeIndices.length
+    && activeIndices.every(idx => Number.isInteger(idx) && idx >= 0 && idx < matrixColumnCount);
+}
+
+function selectMatrixColumns(matrix, columnIndices) {
+  if (!Array.isArray(matrix) || !Array.isArray(columnIndices) || !columnIndices.length) return matrix;
+  return matrix.map(row => columnIndices.map(idx => row[idx]));
 }
 
 function parseEvents(t) {
