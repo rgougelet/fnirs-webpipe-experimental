@@ -192,14 +192,24 @@ function getSeriesExtent(series) {
 }
 
 function getSeriesCollectionExtent(seriesList) {
-  const allValues = [];
+  let hasData = false;
+  let min = 0;
+  let max = 0;
+
   (Array.isArray(seriesList) ? seriesList : []).forEach(item => {
-    if (item && Array.isArray(item.data) && item.data.length) {
-      allValues.push(...item.data);
+    if (!item || !Array.isArray(item.data) || !item.data.length) return;
+    const extent = getSeriesExtent(item.data);
+    if (!hasData) {
+      min = extent.min;
+      max = extent.max;
+      hasData = true;
+      return;
     }
+    if (extent.min < min) min = extent.min;
+    if (extent.max > max) max = extent.max;
   });
-  if (!allValues.length) return { min: 0, max: 0 };
-  return getSeriesExtent(allValues);
+
+  return hasData ? { min, max } : { min: 0, max: 0 };
 }
 
 function eventDisplayLabel(event) {

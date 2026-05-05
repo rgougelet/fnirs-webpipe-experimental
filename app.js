@@ -3,6 +3,7 @@
 const APP_VERSION = "0.3.4";
 const APP_LAST_UPDATED = "2026-05-05 16:02 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
+const VERBOSE_LOGGING = true;
 
 const input = document.getElementById("input");
 const metaDiv = document.getElementById("meta");
@@ -123,6 +124,9 @@ let trimPanelEl = null;
 let hboPanelEl = null;
 let hbrPanelEl = null;
 let plotScrollerEl = null;
+let logSequence = 0;
+let debugLogEntries = [];
+let debugLogPanelEl = null;
 
 const DEFAULT_CHANNEL_DISTANCE_MM = 30.0;
 const DEFAULT_DPF = {
@@ -152,20 +156,100 @@ function renderAppLastUpdated() {
   appLastUpdatedEl.textContent = "Last updated: " + APP_LAST_UPDATED;
 }
 
+function clearDebugLog() {
+  debugLogEntries = [];
+  updateDebugLogPanel();
+}
+
+function pushDebugEntry(level, scope, details, stack) {
+  const entry = {
+    seq: ++logSequence,
+    level,
+    scope,
+    details: details === undefined ? "" : details,
+    stack: stack || ""
+  };
+  debugLogEntries.push(entry);
+  if (debugLogEntries.length > 200) debugLogEntries = debugLogEntries.slice(debugLogEntries.length - 200);
+  updateDebugLogPanel();
+  return entry;
+}
+
+function formatDebugDetails(details) {
+  if (details === undefined || details === null) return "";
+  if (typeof details === "string") return details;
+  try {
+    return JSON.stringify(details);
+  } catch {
+    return String(details);
+  }
+}
+
+function debugLog(scope, details) {
+  if (!VERBOSE_LOGGING) return;
+  const entry = pushDebugEntry("log", scope, formatDebugDetails(details), "");
+  const prefix = "[fnirs-webpipe " + String(entry.seq).padStart(4, "0") + "]";
+  if (details === undefined) {
+    console.log(prefix, scope);
+    return;
+  }
+  console.log(prefix, scope, details);
+}
+
+function debugError(scope, err) {
+  if (!VERBOSE_LOGGING) return;
+  const message = err && err.message ? err.message : String(err);
+  const stack = err && err.stack ? err.stack : null;
+  const entry = pushDebugEntry("error", scope, message, stack || "");
+  console.error("[fnirs-webpipe " + String(entry.seq).padStart(4, "0") + "]", scope, message, stack || "");
+}
+
+function summarizeMatrix(matrix) {
+  if (!Array.isArray(matrix) || !matrix.length || !Array.isArray(matrix[0])) {
+    return { rows: 0, columns: 0 };
+  }
+  return {
+    rows: matrix.length,
+    columns: matrix[0].length
+  };
+}
+
+function updateDebugLogPanel() {
+  if (!debugLogPanelEl) return;
+  if (!debugLogEntries.length) {
+    debugLogPanelEl.textContent = "No debug logs yet.";
+    return;
+  }
+  debugLogPanelEl.textContent = debugLogEntries.map(entry => {
+    const prefix = "[fnirs-webpipe " + String(entry.seq).padStart(4, "0") + "] " + entry.level.toUpperCase() + " " + entry.scope;
+    const details = entry.details ? "\n" + entry.details : "";
+    const stack = entry.stack ? "\n" + entry.stack : "";
+    return prefix + details + stack;
+  }).join("\n\n");
+  debugLogPanelEl.scrollTop = debugLogPanelEl.scrollHeight;
+}
+
 /* ================= Input ================= */
 
 async function handleInput(evt) {
   resetUiOnly();
+  clearDebugLog();
   const files = Array.from(evt.target.files);
+  debugLog("handleInput:selectedFiles", files.map(f => ({
+    name: f.name,
+    sizeBytes: f.size
+  })));
 
   if (files.length === 1 && files[0].name.toLowerCase().endsWith(".zip")) {
     inputTypeLabel = "zip";
     datasetLabel = stem(files[0].name);
+    debugLog("handleInput:mode", { inputTypeLabel, datasetLabel });
     await loadZip(files[0]);
   } else {
     inputTypeLabel = "files";
     const hdr = files.find(f => f.name.toLowerCase().endsWith(".hdr"));
     datasetLabel = hdr ? stem(hdr.name) : (files[0] ? stem(files[0].name) : "unknown-dataset");
+    debugLog("handleInput:mode", { inputTypeLabel, datasetLabel });
     await loadFiles(files);
   }
 }
@@ -258,7 +342,12 @@ function resetAllState() {
 /* ================= ZIP handling (auto detect protocol ZIP) ================= */
 
 async function loadZip(zipFile) {
+  debugLog("loadZip:start", { name: zipFile.name, sizeBytes: zipFile.size });
   const zip = await JSZip.loadAsync(zipFile);
+  debugLog("loadZip:entries", {
+    entryCount: Object.keys(zip.files || {}).length,
+    name: zipFile.name
+  });
 
   const protoFile =
     zip.file("protocol.pipe") ||
@@ -288,6 +377,13 @@ async function loadZip(zipFile) {
   const wl2 = findZipEntryBySuffix(zip, ".wl2");
   const evt = findZipEntryBySuffix(zip, ".evt");
   const probeMat = findZipEntryByContainsAndSuffix(zip, "probeinfo", ".mat");
+  debugLog("loadZip:resolvedEntries", {
+    hdr: hdr ? hdr.name : null,
+    wl1: wl1 ? wl1.name : null,
+    wl2: wl2 ? wl2.name : null,
+    evt: evt ? evt.name : null,
+    probeMat: probeMat ? probeMat.name : null
+  });
 
   await loadNirxDatasetFromReaders({
     hdr: hdr ? { name: hdr.name, readText: () => hdr.async("text") } : null,
@@ -302,6 +398,10 @@ async function loadZip(zipFile) {
 
 async function loadFiles(files) {
   resetAllState();
+  debugLog("loadFiles:start", files.map(f => ({
+    name: f.name,
+    sizeBytes: f.size
+  })));
 
   const hdr = files.find(f => f.name.toLowerCase().endsWith(".hdr"));
   const wl1 = files.find(f => f.name.toLowerCase().endsWith(".wl1"));
@@ -354,6 +454,13 @@ function findZipEntryByContainsAndSuffix(zip, fragment, suffix) {
 
 async function loadNirxDatasetFromReaders(parts) {
   resetAllState();
+  debugLog("loadDataset:start", {
+    hdr: parts && parts.hdr ? parts.hdr.name : null,
+    wl1: parts && parts.wl1 ? parts.wl1.name : null,
+    wl2: parts && parts.wl2 ? parts.wl2.name : null,
+    evt: parts && parts.evt ? parts.evt.name : null,
+    probeMat: parts && parts.probeMat ? parts.probeMat.name : null
+  });
 
   const hdr = parts && parts.hdr ? parts.hdr : null;
   const wl1 = parts && parts.wl1 ? parts.wl1 : null;
@@ -373,7 +480,9 @@ async function loadNirxDatasetFromReaders(parts) {
   }
 
   try {
+    const loadStartMs = performance.now();
     const hdrT = await hdr.readText();
+    debugLog("loadDataset:hdrRead", { chars: hdrT.length, name: hdr.name });
     samplingRate = parseSamplingRate(hdrT);
     sources.samplingRateFrom = hdr.name;
     const parsedWavelengths = parseHdrWavelengths(hdrT);
@@ -384,6 +493,13 @@ async function loadNirxDatasetFromReaders(parts) {
       || hdrChannelLabels.length
       || parseHdrChannelDistancesMm(hdrT).length
       || parseHdrChannelCountHint(hdrT);
+    debugLog("loadDataset:hdrParsed", {
+      samplingRate,
+      wavelengthsNm,
+      activeChannelCount: activeChannelIndices.length,
+      hdrChannelLabelCount: hdrChannelLabels.length,
+      channelCountHint
+    });
 
     const matBuf = probeMat ? await probeMat.readArrayBuffer() : null;
     if (matBuf) {
@@ -396,16 +512,32 @@ async function loadNirxDatasetFromReaders(parts) {
       channelLabelSource = "default (probeInfo.mat not found)";
       sources.channelLabelsFrom = "default";
     }
+    debugLog("loadDataset:probeInfo", {
+      hasProbeInfo: !!matBuf,
+      channelLabelSource,
+      channelLabelCount: channelLabels.length
+    });
 
     const matrixColumnIndices = activeChannelIndices.length ? activeChannelIndices : null;
+    debugLog("loadDataset:matrixSelection", {
+      selectedColumnCount: matrixColumnIndices ? matrixColumnIndices.length : null,
+      selectedColumnMaxIndex: matrixColumnIndices && matrixColumnIndices.length ? matrixColumnIndices[matrixColumnIndices.length - 1] : null
+    });
 
     const wl1T = await wl1.readText();
-    data.wl1 = parseMatrix(wl1T, matrixColumnIndices);
+    debugLog("loadDataset:wl1Read", { chars: wl1T.length, name: wl1.name });
+    data.wl1 = parseMatrix(wl1T, matrixColumnIndices, "wl1");
 
     const wl2T = await wl2.readText();
-    data.wl2 = parseMatrix(wl2T, matrixColumnIndices);
+    debugLog("loadDataset:wl2Read", { chars: wl2T.length, name: wl2.name });
+    data.wl2 = parseMatrix(wl2T, matrixColumnIndices, "wl2");
 
     const actualChannelCount = inferMatrixChannelCount(data.wl1, data.wl2);
+    debugLog("loadDataset:matrixParsed", {
+      wl1: summarizeMatrix(data.wl1),
+      wl2: summarizeMatrix(data.wl2),
+      actualChannelCount
+    });
     channelDistancesMm = normalizeNumericList(
       parseHdrChannelDistancesMm(hdrT),
       actualChannelCount,
@@ -437,8 +569,16 @@ async function loadNirxDatasetFromReaders(parts) {
     const evtT = evt ? await evt.readText() : null;
     events = evtT ? parseEvents(evtT) : [];
     sources.eventsFrom = evt ? evt.name : "none";
+    debugLog("loadDataset:eventsParsed", {
+      eventCount: events.length,
+      eventsFrom: sources.eventsFrom
+    });
 
+    const controlsStartMs = performance.now();
     buildControls();
+    debugLog("loadDataset:buildControls", {
+      ms: Number((performance.now() - controlsStartMs).toFixed(1))
+    });
     controls.classList.remove("hidden");
 
     if (pendingProtocol) {
@@ -446,11 +586,24 @@ async function loadNirxDatasetFromReaders(parts) {
       pendingProtocol = null;
     }
 
+    const metaStartMs = performance.now();
     renderMeta();
+    debugLog("loadDataset:renderMeta", {
+      ms: Number((performance.now() - metaStartMs).toFixed(1))
+    });
+    const redrawStartMs = performance.now();
     redraw();
+    debugLog("loadDataset:redraw", {
+      ms: Number((performance.now() - redrawStartMs).toFixed(1))
+    });
+    debugLog("loadDataset:complete", {
+      datasetLabel,
+      elapsedMs: Number((performance.now() - loadStartMs).toFixed(1))
+    });
   } catch (err) {
     const message = err && err.message ? err.message : String(err);
     metaDiv.textContent = "Failed to load dataset: " + message;
+    debugError("loadDataset:failed", err);
   }
 }
 
@@ -537,6 +690,17 @@ function buildControls() {
   importDiv.appendChild(input);
   importDiv.appendChild(importHelp);
   importDiv.appendChild(metaDiv);
+
+  const debugDiv = document.createElement("div");
+  debugDiv.className = "pt-2 flex flex-col gap-2";
+  const debugHelp = document.createElement("div");
+  debugHelp.className = "text-xs text-slate-600";
+  debugHelp.textContent = "Verbose diagnostics and error stacks for the current load.";
+  debugLogPanelEl = document.createElement("pre");
+  debugLogPanelEl.className = "debug-log-panel";
+  debugDiv.appendChild(debugHelp);
+  debugDiv.appendChild(debugLogPanelEl);
+  updateDebugLogPanel();
 
   const wlDiv = document.createElement("div");
   wlDiv.className = "pt-2 flex flex-col gap-2";
@@ -896,6 +1060,7 @@ function buildControls() {
   const accordionStack = document.createElement("div");
   accordionStack.className = "flex flex-col gap-2";
   accordionStack.appendChild(createAccordionSection("Import", importDiv, true));
+  accordionStack.appendChild(createAccordionSection("Debug Log", debugDiv, true));
   accordionStack.appendChild(createAccordionSection("Actions", actionsDiv, false));
   accordionStack.appendChild(createAccordionSection("Protocol", protocolDiv, false));
   accordionStack.appendChild(createAccordionSection("Plot View", viewCard, false));
@@ -1133,6 +1298,13 @@ function resetProtocolUiOnly() {
 
 function redraw() {
   if (!data.wl1) return;
+  const redrawStartMs = performance.now();
+  debugLog("redraw:start", {
+    currentWavelength,
+    currentChannel,
+    samples: data.wl1.length,
+    channels: data.wl1[0] ? data.wl1[0].length : 0
+  });
 
   if (currentWavelength !== "wl1" && currentWavelength !== "wl2") currentWavelength = "wl1";
   const maxChannelIndex = Math.max(0, inferMatrixChannelCount(data[currentWavelength]) - 1);
@@ -1332,6 +1504,12 @@ function redraw() {
     hbWindowed,
     mbllConfig
   });
+  debugLog("redraw:end", {
+    elapsedMs: Number((performance.now() - redrawStartMs).toFixed(1)),
+    rawSamples: rawWindowed.series.length,
+    processedSamples: processedWindowed.series.length,
+    hbAvailable: !!(hbWindowed && hbWindowed.hbo && hbWindowed.hbo.series.length)
+  });
 }
 
 /* ================= Meta and protocol summary ================= */
@@ -1339,6 +1517,11 @@ function redraw() {
 function renderMeta() {
   if (!data.wl1 || !samplingRate) return;
   if (!recordingSummaryContentEl || !fileSourcesContentEl || !eventsContentEl) return;
+  debugLog("renderMeta:start", {
+    samples: data.wl1.length,
+    channels: data.wl1[0] ? data.wl1[0].length : 0,
+    eventCount: events.length
+  });
 
   const summary = buildProtocolSummary(buildProtocolObject());
   updateProtocolSummaryLabel(summary);
@@ -1424,6 +1607,11 @@ function renderMeta() {
     + eventRows
     + "  </tbody>"
     + "</table>";
+  debugLog("renderMeta:end", {
+    datasetLabel,
+    channelLabelSource,
+    eventsRendered: events.length
+  });
 }
 
 /* ================= Protocol object, export, import ================= */
@@ -2088,12 +2276,13 @@ function normalizeNumericList(values, count, fallbackValue) {
   return out;
 }
 
-function parseMatrix(t, selectedColumns) {
+function parseMatrix(t, selectedColumns, label) {
+  const startMs = performance.now();
   const activeColumns = Array.isArray(selectedColumns) && selectedColumns.length
     ? selectedColumns.slice().sort((a, b) => a - b)
     : null;
   const rows = [];
-  let row = activeColumns ? new Float32Array(activeColumns.length) : [];
+  let row = [];
   let rowColumnCount = 0;
   let activeColumnCursor = 0;
   let token = "";
@@ -2104,7 +2293,7 @@ function parseMatrix(t, selectedColumns) {
     if (Number.isFinite(value)) {
       if (activeColumns) {
         if (activeColumnCursor < activeColumns.length && activeColumns[activeColumnCursor] === rowColumnCount) {
-          row[activeColumnCursor] = value;
+          row.push(value);
           activeColumnCursor++;
         }
         rowColumnCount++;
@@ -2125,14 +2314,14 @@ function parseMatrix(t, selectedColumns) {
         );
       }
       rows.push(row);
-      row = new Float32Array(activeColumns.length);
+      row = [];
       rowColumnCount = 0;
       activeColumnCursor = 0;
       return;
     }
 
     if (row.length) {
-      rows.push(Float32Array.from(row));
+      rows.push(row);
       row = [];
     }
   };
@@ -2151,6 +2340,14 @@ function parseMatrix(t, selectedColumns) {
   }
 
   pushRow();
+  debugLog("parseMatrix:complete", {
+    label: label || "matrix",
+    chars: t.length,
+    rows: rows.length,
+    columns: rows.length && Array.isArray(rows[0]) ? rows[0].length : 0,
+    selectedColumnCount: activeColumns ? activeColumns.length : null,
+    elapsedMs: Number((performance.now() - startMs).toFixed(1))
+  });
   return rows;
 }
 
