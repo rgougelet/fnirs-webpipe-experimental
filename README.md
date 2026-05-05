@@ -6,7 +6,7 @@ All computation occurs locally in the user's browser. Data are never uploaded to
 
 Desktop-only scope: this project does not target mobile layouts or mobile capture.
 
-## Branch Workflow
+## Git Workflow
 This repo uses two remotes with different roles:
 
 - `origin` is the stable repo: `rgougelet/fnirs-webpipe`
@@ -14,23 +14,17 @@ This repo uses two remotes with different roles:
 
 This is the intended workflow:
 
-- Do active development on local `experimental`.
-- Publish preview work to `experimental/main`.
-- Keep local `main` for stable release promotion only.
-- When a version is stable, merge `experimental` into `main`.
-- Push `main` to `origin/main`.
+- Do active development on local `main`.
+- Treat `experimental/main` as the default development remote branch.
+- Push stable releases explicitly to `origin/main`.
+- Distinguish development from production by remote, not by local branch name.
 
-In short: do not develop on `main`.
-
-Useful commands:
+Use explicit Git commands while the repo workflow is still settling:
 
 ```powershell
-git switch experimental
-npm run git:push:experimental
-
 git switch main
-git merge experimental
-npm run git:push
+git push experimental main:main
+git push origin main:main
 ```
 
 If two agents need to work at the same time, use separate worktrees instead of sharing one checked-out directory.
@@ -111,32 +105,22 @@ Useful variants:
 If the Codex TUI was exited with `/exit`, restart with `npm run codex`; it uses
 `codex resume --last`, so you should not need to copy the conversation ID.
 
-## Repo wrapper workflow
-Only a small set of wrappers are retained. They exist to encode branch policy
-or reduce repeated approval prompts:
+## Repo Wrapper Workflow
+Git wrappers were removed while the repo structure and remote workflow are still in flux.
+Use raw `git` commands for branch, fetch, pull, push, and release operations.
+
+The remaining wrappers exist only for browser tooling where stable command names
+reduce repeated approval prompts:
 
 ```powershell
-npm run git:push:experimental
-npm run git:push
 npm run ui:capture
 npm run ui:capture:light
 npm run ui:install
 ```
 
-- `git:push:experimental` pushes local `experimental` to `experimental/main` and refuses to run on other branches.
-- `git:push` pushes local `main` to `origin/main` and refuses to run on other branches.
 - `ui:capture` runs the screenshot flow through one stable npm command.
 - `ui:capture:light` runs the light-theme screenshot flow through one stable npm command.
 - `ui:install` installs Chromium for Playwright through one stable npm command.
-
-Removed wrappers:
-
-- `git:status`
-- `git:add`
-- `git:save`
-- `git:delete-branch`
-
-Use raw `git` for those operations.
 
 ## Status
 Active development.

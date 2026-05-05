@@ -5,26 +5,21 @@ This repository uses two GitHub remotes on purpose:
 - `origin` -> `rgougelet/fnirs-webpipe`
 - `experimental` -> `rgougelet/fnirs-webpipe-experimental`
 
-Branch policy:
+Git policy:
 
-- Active development happens on local `experimental`.
-- Stable releases happen on local `main`.
-- Push local `experimental` to `experimental/main`.
-- Push local `main` to `origin/main`.
-- Do not treat `origin` as the day-to-day development remote.
-- Do not push experimental work to `origin/main`.
+- Active development happens on local `main`.
+- Local `main` should track `experimental/main`.
+- Production release happens by explicit push to `origin/main`.
+- Do not rely on branch names to distinguish environments. Use remote names.
+- Do not assume a local `experimental` branch exists.
 
-Current local tracking:
+Canonical commands:
 
-- local `experimental` tracks `experimental/main`
-- local `main` tracks `origin/main`
-
-Promotion workflow:
-
-1. Work on `experimental`.
-2. Push preview updates to the experimental repo.
-3. When stable, merge `experimental` into `main`.
-4. Push `main` to `origin`.
+```powershell
+git switch main
+git push experimental main:main
+git push origin main:main
+```
 
 Worktree policy:
 
@@ -34,8 +29,8 @@ Worktree policy:
 
 Wrapper policy:
 
-- Keep wrappers only when they encode repo policy or reduce repeated approval prompts.
 - Prefer raw `git` for ad hoc inspection and branch surgery.
+- Git wrappers are intentionally removed while the repo workflow is in flux.
 - Do not run raw `node scripts/capture-ui.mjs` or raw `playwright` commands when an npm wrapper exists.
 - For browser capture and Chromium install, prefer npm wrappers so approvals can be reused.
 - Prefer exact wrapper names over ad hoc extra args for repeated browser tasks.
@@ -44,8 +39,6 @@ Wrapper policy:
 Approved workflow commands:
 
 ```powershell
-npm run git:push:experimental
-npm run git:push
 npm run ui:capture
 npm run ui:capture:light
 npm run ui:install
@@ -53,10 +46,8 @@ npm run ui:install
 
 Command meaning:
 
-- `npm run git:push:experimental` pushes preview work from local `experimental` to `experimental/main`.
-- `npm run git:push` pushes stable work from local `main` to `origin/main`.
 - `npm run ui:capture` runs the Playwright screenshot workflow through one stable wrapper.
 - `npm run ui:capture:light` runs the light-theme screenshot workflow through one stable wrapper.
 - `npm run ui:install` installs Chromium for Playwright through one stable wrapper.
 
-If you are an agent entering this repo cold, assume `experimental` is the working branch unless the user explicitly says they are preparing a stable release.
+If you are an agent entering this repo cold, assume local `main` is the working branch and that development should default toward the `experimental` remote unless the user explicitly says they are publishing production.

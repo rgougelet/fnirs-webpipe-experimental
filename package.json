@@ -7,8 +7,6 @@
     "codex": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/codex-session.ps1",
     "codex:new": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/codex-session.ps1 -New",
     "codex:pick": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/codex-session.ps1 -Picker",
-    "git:push": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-push-main.ps1",
-    "git:push:experimental": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/git-push-experimental.ps1",
     "serve": "node scripts/dev-server.mjs",
     "ui:capture": "node scripts/capture-ui.mjs",
     "ui:capture:light": "node scripts/capture-ui.mjs --theme=light",
