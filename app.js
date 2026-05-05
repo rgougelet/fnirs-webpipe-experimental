@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.2";
-const APP_LAST_UPDATED = "2026-05-01 11:05 EDT";
+const APP_VERSION = "0.3.3";
+const APP_LAST_UPDATED = "2026-05-04 14:35 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 
 const input = document.getElementById("input");
@@ -397,17 +397,13 @@ async function loadNirxDatasetFromReaders(parts) {
       sources.channelLabelsFrom = "default";
     }
 
+    const matrixColumnIndices = activeChannelIndices.length ? activeChannelIndices : null;
+
     const wl1T = await wl1.readText();
-    data.wl1 = parseMatrix(wl1T);
+    data.wl1 = parseMatrix(wl1T, matrixColumnIndices);
 
     const wl2T = await wl2.readText();
-    data.wl2 = parseMatrix(wl2T);
-
-    const rawChannelCount = inferMatrixChannelCount(data.wl1, data.wl2);
-    if (shouldUseActiveChannelSubset(activeChannelIndices, rawChannelCount)) {
-      data.wl1 = selectMatrixColumns(data.wl1, activeChannelIndices);
-      data.wl2 = selectMatrixColumns(data.wl2, activeChannelIndices);
-    }
+    data.wl2 = parseMatrix(wl2T, matrixColumnIndices);
 
     const actualChannelCount = inferMatrixChannelCount(data.wl1, data.wl2);
     channelDistancesMm = normalizeNumericList(
@@ -2092,30 +2088,50 @@ function normalizeNumericList(values, count, fallbackValue) {
   return out;
 }
 
-function parseMatrix(t, expectedColumns) {
+function parseMatrix(t, selectedColumns) {
+  const activeColumns = Array.isArray(selectedColumns) && selectedColumns.length
+    ? selectedColumns.slice().sort((a, b) => a - b)
+    : null;
   const rows = [];
-  let row = [];
+  let row = activeColumns ? new Float32Array(activeColumns.length) : [];
+  let rowColumnCount = 0;
+  let activeColumnCursor = 0;
   let token = "";
 
   const pushToken = () => {
     if (!token) return;
     const value = Number(token);
-    if (Number.isFinite(value)) row.push(value);
+    if (Number.isFinite(value)) {
+      if (activeColumns) {
+        if (activeColumnCursor < activeColumns.length && activeColumns[activeColumnCursor] === rowColumnCount) {
+          row[activeColumnCursor] = value;
+          activeColumnCursor++;
+        }
+        rowColumnCount++;
+      } else {
+        row.push(value);
+      }
+    }
     token = "";
   };
 
   const pushRow = () => {
     pushToken();
-    if (row.length) {
-      if (Number.isFinite(expectedColumns) && expectedColumns > 0) {
-        if (row.length < expectedColumns) {
-          throw new Error("Data row has " + row.length + " columns; expected at least " + expectedColumns);
+    if ((activeColumns && rowColumnCount > 0) || row.length) {
+      if (activeColumns) {
+        if (activeColumnCursor !== activeColumns.length) {
+          throw new Error(
+            "Data row has " + rowColumnCount + " columns; expected at least " + (activeColumns[activeColumns.length - 1] + 1)
+          );
         }
-        rows.push(row.slice(0, expectedColumns));
-      } else {
         rows.push(row);
+        row = new Float32Array(activeColumns.length);
+        rowColumnCount = 0;
+        activeColumnCursor = 0;
+      } else {
+        rows.push(Float32Array.from(row));
+        row = [];
       }
-      row = [];
     }
   };
 
@@ -2211,24 +2227,11 @@ function extractHdrChannelLabels(text) {
 function inferMatrixChannelCount() {
   for (let i = 0; i < arguments.length; i++) {
     const matrix = arguments[i];
-    if (Array.isArray(matrix) && matrix.length && Array.isArray(matrix[0]) && matrix[0].length) {
+    if (Array.isArray(matrix) && matrix.length && matrix[0] && Number.isFinite(matrix[0].length) && matrix[0].length) {
       return matrix[0].length;
     }
   }
   return 0;
-}
-
-function shouldUseActiveChannelSubset(activeIndices, matrixColumnCount) {
-  return Array.isArray(activeIndices)
-    && activeIndices.length > 0
-    && Number.isFinite(matrixColumnCount)
-    && matrixColumnCount > activeIndices.length
-    && activeIndices.every(idx => Number.isInteger(idx) && idx >= 0 && idx < matrixColumnCount);
-}
-
-function selectMatrixColumns(matrix, columnIndices) {
-  if (!Array.isArray(matrix) || !Array.isArray(columnIndices) || !columnIndices.length) return matrix;
-  return matrix.map(row => columnIndices.map(idx => row[idx]));
 }
 
 function parseEvents(t) {
