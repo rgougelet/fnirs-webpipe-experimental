@@ -2,10 +2,11 @@ function drawPlot(ctx, canvas, series, samplingRate, overlays, events, title, st
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const timeOffsetSeconds = options && Number.isFinite(options.timeOffsetSeconds) ? options.timeOffsetSeconds : 0;
   const seriesList = normalizeSeriesList(series, options);
+  const extent = getSeriesCollectionExtent(seriesList);
 
   drawGrid(ctx, canvas);
-  drawAxes(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds);
-  drawSeries(ctx, canvas, seriesList);
+  drawAxes(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds, extent);
+  drawSeries(ctx, canvas, seriesList, extent);
 
   if (overlays && overlays.length) {
     drawOverlays(ctx, canvas, overlays, series.length, samplingRate);
@@ -25,14 +26,14 @@ function normalizeSeriesList(series, options) {
       .map(item => ({
         label: item && item.label ? String(item.label) : "",
         color: item && item.color ? String(item.color) : "#0f172a",
-        data: Array.isArray(item && item.data) ? item.data : []
+        data: isSeriesLike(item && item.data) ? Array.from(item.data) : []
       }))
       .filter(item => item.data.length);
   }
   return [{
     label: "",
     color: "#0f172a",
-    data: Array.isArray(series) ? series : []
+    data: isSeriesLike(series) ? Array.from(series) : []
   }];
 }
 
@@ -60,7 +61,7 @@ function drawGrid(ctx, canvas) {
   }
 }
 
-function drawAxes(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds) {
+function drawAxes(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds, extent) {
   const w = canvas.width - M.left - M.right;
   const h = canvas.height - M.top - M.bottom;
 
@@ -72,15 +73,14 @@ function drawAxes(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds) {
   ctx.lineTo(M.left + w, M.top + h);
   ctx.stroke();
 
-  drawTicks(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds);
+  drawTicks(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds, extent);
 }
 
-function drawTicks(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds) {
+function drawTicks(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds, extent) {
   const w = canvas.width - M.left - M.right;
   const h = canvas.height - M.top - M.bottom;
   const primary = Array.isArray(seriesList) && seriesList.length ? seriesList[0].data : [];
   const dur = primary.length / samplingRate;
-  const extent = getSeriesCollectionExtent(seriesList);
   const minY = extent.min;
   const maxY = extent.max;
   const yRange = maxY - minY;
@@ -109,10 +109,9 @@ function drawTicks(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds) {
   }
 }
 
-function drawSeries(ctx, canvas, seriesList) {
+function drawSeries(ctx, canvas, seriesList, extent) {
   const w = canvas.width - M.left - M.right;
   const h = canvas.height - M.top - M.bottom;
-  const extent = getSeriesCollectionExtent(seriesList);
   const minY = extent.min;
   const maxY = extent.max;
   const span = maxY - minY || 1;
@@ -189,6 +188,10 @@ function getSeriesExtent(series) {
     if (value > max) max = value;
   }
   return { min, max };
+}
+
+function isSeriesLike(series) {
+  return Array.isArray(series) || ArrayBuffer.isView(series);
 }
 
 function getSeriesCollectionExtent(seriesList) {
@@ -294,10 +297,10 @@ function getYTickCount(minY, maxY) {
 
 
 function computeStats(series) {
-  if (!Array.isArray(series) || !series.length) {
+  if (!isSeriesLike(series) || !series.length) {
     return { mean: 0, median: 0, sd: 0, min: 0, max: 0 };
   }
-  const sorted = [...series].sort((a, b) => a - b);
+  const sorted = Array.from(series).sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
 
   const median = sorted.length % 2
