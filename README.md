@@ -29,6 +29,28 @@ git push origin main:main
 
 If two agents need to work at the same time, use separate worktrees instead of sharing one checked-out directory.
 
+## Readable Files Policy
+This repo treats end-to-end readability as an architectural constraint, not just
+a style preference. Favor small cohesive files over one large orchestrator so
+humans and agents can read whole files before making structural decisions.
+
+Use the line-count report to keep that visible:
+
+```powershell
+npm run report:lines
+```
+
+Thresholds:
+
+- `target`: 250 lines or fewer
+- `watch`: 251-400 lines
+- `split`: 401-600 lines
+- `exception-review`: more than 600 lines
+
+If a file is already in `split` or `exception-review`, avoid adding unrelated
+responsibilities to it. Right now, `app.js` is the main structural outlier and
+should be reduced incrementally over time rather than expanded casually.
+
 Current pipeline controls expose these ordered steps:
 - Input signal domain: `Intensity (a.u.)` or `Delta OD`
 - Explicit stage cards for intensity, `Delta OD`, processed `Delta OD`, and relative hemoglobin output
@@ -97,13 +119,10 @@ This resumes the most recent Codex session in this repo with inline terminal
 scrollback enabled. It also writes a PowerShell transcript to
 `agents/chat-history/`.
 
-Useful variants:
-
-- `npm run codex:new` starts a new session.
-- `npm run codex:pick` opens Codex's resume picker.
-
-If the Codex TUI was exited with `/exit`, restart with `npm run codex`; it uses
-`codex resume --last`, so you should not need to copy the conversation ID.
+`npm run codex` is the single repo-supported launcher. It runs `codex resume`
+from the repo root so you can pick up prior conversations, and if resume fails
+it falls back to starting a new session. It also records a PowerShell
+transcript in `agents/chat-history/`.
 
 ## Repo Wrapper Workflow
 Git wrappers were removed while the repo structure and remote workflow are still in flux.

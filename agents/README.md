@@ -6,8 +6,8 @@ Read [../AGENTS.md](../AGENTS.md) before doing branch, remote, or Playwright ope
 
 ## Chat History
 
-Codex sessions launched with `npm run codex`, `npm run codex:new`, or
-`npm run codex:pick` write PowerShell transcripts to `agents/chat-history/`.
+Codex sessions launched with `npm run codex` write PowerShell transcripts to
+`agents/chat-history/`.
 
 Keep useful transcripts here when they document project decisions, debugging
 steps, or implementation history worth preserving with the repository.

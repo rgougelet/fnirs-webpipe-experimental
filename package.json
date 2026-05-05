@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "codex": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/codex-session.ps1",
-    "codex:new": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/codex-session.ps1 -New",
-    "codex:pick": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/codex-session.ps1 -Picker",
+    "report:lines": "node scripts/report-lines.mjs",
     "serve": "node scripts/dev-server.mjs",
     "ui:capture": "node scripts/capture-ui.mjs",
     "ui:capture:light": "node scripts/capture-ui.mjs --theme=light",

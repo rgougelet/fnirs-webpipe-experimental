@@ -27,6 +27,20 @@ Worktree policy:
 - Do not have multiple agents editing the same worktree concurrently.
 - Before any write, check `git status --short --branch`.
 
+Readable file policy:
+
+- Keep repo-authored files small enough to read end-to-end before making structural decisions.
+- Prefer many small cohesive modules over growing one orchestration file.
+- Run `npm run report:lines` before and after structure-heavy changes.
+- Thresholds:
+  - `target`: 250 lines or fewer
+  - `watch`: 251-400 lines
+  - `split`: 401-600 lines
+  - `exception-review`: more than 600 lines
+- If a file is already in `split` or `exception-review`, do not add unrelated responsibilities to it.
+- For architecture work, prefer reading full files rather than reasoning from snippets.
+- `app.js` is the current structural outlier and should be paid down incrementally rather than expanded casually.
+
 Wrapper policy:
 
 - Prefer raw `git` for ad hoc inspection and branch surgery.
@@ -39,6 +53,7 @@ Wrapper policy:
 Approved workflow commands:
 
 ```powershell
+npm run report:lines
 npm run ui:capture
 npm run ui:capture:light
 npm run ui:install
@@ -46,6 +61,7 @@ npm run ui:install
 
 Command meaning:
 
+- `npm run report:lines` prints the current line-count report for repo-authored files.
 - `npm run ui:capture` runs the Playwright screenshot workflow through one stable wrapper.
 - `npm run ui:capture:light` runs the light-theme screenshot workflow through one stable wrapper.
 - `npm run ui:install` installs Chromium for Playwright through one stable wrapper.

@@ -1,6 +1,4 @@
 param(
-  [switch]$New,
-  [switch]$Picker,
   [string]$Prompt
 )
 
@@ -19,23 +17,14 @@ try {
   Set-Location $repoRoot
 
   $commonArgs = @("--no-alt-screen", "--cd", $repoRoot)
-
-  if ($New) {
-    $cmdArgs = $commonArgs
-    if ($Prompt) { $cmdArgs += $Prompt }
-  } elseif ($Picker) {
-    $cmdArgs = @("resume") + $commonArgs
-    if ($Prompt) { $cmdArgs += $Prompt }
-  } else {
-    $cmdArgs = @("resume", "--last") + $commonArgs
-    if ($Prompt) { $cmdArgs += $Prompt }
-  }
+  $cmdArgs = @("resume") + $commonArgs
+  if ($Prompt) { $cmdArgs += $Prompt }
 
   Write-Host ("Running: codex " + ($cmdArgs -join " "))
   & codex @cmdArgs
   $exitCode = $LASTEXITCODE
 
-  if ((-not $New) -and (-not $Picker) -and $exitCode -ne 0) {
+  if ($exitCode -ne 0) {
     Write-Host "Resume failed; starting a new Codex session."
     $cmdArgs = $commonArgs
     if ($Prompt) { $cmdArgs += $Prompt }
