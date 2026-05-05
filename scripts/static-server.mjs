@@ -39,6 +39,10 @@ export function startStaticServer({ rootDir, host = "127.0.0.1", port = 4173 }) 
       const body = await readFile(target);
       const ext = path.extname(target).toLowerCase();
       res.setHeader("Content-Type", MIME[ext] || "application/octet-stream");
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.setHeader("Surrogate-Control", "no-store");
       res.writeHead(200);
       res.end(body);
     } catch {

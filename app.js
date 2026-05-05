@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.3";
-const APP_LAST_UPDATED = "2026-05-04 14:35 EDT";
+const APP_VERSION = "0.3.4";
+const APP_LAST_UPDATED = "2026-05-05 16:02 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 
 const input = document.getElementById("input");
@@ -2117,21 +2117,23 @@ function parseMatrix(t, selectedColumns) {
 
   const pushRow = () => {
     pushToken();
-    if ((activeColumns && rowColumnCount > 0) || row.length) {
-      if (activeColumns) {
-        if (activeColumnCursor !== activeColumns.length) {
-          throw new Error(
-            "Data row has " + rowColumnCount + " columns; expected at least " + (activeColumns[activeColumns.length - 1] + 1)
-          );
-        }
-        rows.push(row);
-        row = new Float32Array(activeColumns.length);
-        rowColumnCount = 0;
-        activeColumnCursor = 0;
-      } else {
-        rows.push(Float32Array.from(row));
-        row = [];
+    if (activeColumns) {
+      if (rowColumnCount <= 0) return;
+      if (activeColumnCursor !== activeColumns.length) {
+        throw new Error(
+          "Data row has " + rowColumnCount + " columns; expected at least " + (activeColumns[activeColumns.length - 1] + 1)
+        );
       }
+      rows.push(row);
+      row = new Float32Array(activeColumns.length);
+      rowColumnCount = 0;
+      activeColumnCursor = 0;
+      return;
+    }
+
+    if (row.length) {
+      rows.push(Float32Array.from(row));
+      row = [];
     }
   };
 
