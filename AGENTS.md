@@ -12,6 +12,20 @@ Git policy:
 - Production release happens by explicit push to `origin/main`.
 - Do not rely on branch names to distinguish environments. Use remote names.
 - Do not assume a local `experimental` branch exists.
+- Before any push to any remote, update the repo version markers and timestamp markers for that state.
+- This applies to `experimental` pushes too, not only production pushes.
+
+Pre-push version rule:
+
+- Every pushed snapshot must get a fresh version bump and fresh timestamp.
+- Keep the visible app version aligned across:
+  - `app.js` `APP_VERSION`
+  - `index.html` visible `v...` strings
+  - `package.json` `version`
+- Keep the visible timestamp aligned across:
+  - `app.js` `APP_LAST_UPDATED`
+  - `index.html` visible `Last updated:` strings
+- Agents should treat stale version/timestamp markers as a release-blocking issue and fix them before `git push`.
 
 Canonical commands:
 

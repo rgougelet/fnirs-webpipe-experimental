@@ -18,6 +18,9 @@ This is the intended workflow:
 - Treat `experimental/main` as the default development remote branch.
 - Push stable releases explicitly to `origin/main`.
 - Distinguish development from production by remote, not by local branch name.
+- Before every push, including pushes to `experimental`, bump the version and refresh the visible last-updated timestamp.
+- Keep version markers in sync across `app.js`, `index.html`, and `package.json`.
+- Keep timestamp markers in sync across `app.js` and `index.html`.
 
 Use explicit Git commands while the repo workflow is still settling:
 
