@@ -23,6 +23,24 @@ This file tracks nontrivial third-party code adaptations/reuse.
 
 ## Discovered During Intake (Not Yet Reused In This Repo)
 
+### JSZip
+- Source: `https://github.com/Stuk/jszip` and local install snapshot `node_modules/jszip`
+- Version: `3.10.1`
+- License: `MIT` (chosen from JSZip dual license `MIT OR GPL-3.0-or-later`)
+- Usage mode: `direct_reuse`
+- Files in this repo:
+  - `vendor/jszip.js`
+  - `vendor/jszip.LICENSE.markdown`
+- Summary of reused/adapted parts:
+  - Unmodified browser distribution file for reading local `.zip` datasets in the portable app
+- Modifications made:
+  - None; copied verbatim into `vendor/`
+- Required notices:
+  - Keep `vendor/jszip.LICENSE.markdown` with the vendored file
+  - Keep this notice entry
+
+---
+
 ### Homer3 MBLL/OD reference methods
 - Source: `references/unpacked/BUNPC-Homer3-1.87.0.0`
 - Version: `BUNPC-Homer3-1.87.0.0` ZIP snapshot imported on 2026-03-06

@@ -30,7 +30,8 @@ const EXCLUDED_PREFIXES = [
   "node_modules/",
   "nirx-local/",
   "references/",
-  "screenshots/"
+  "screenshots/",
+  "vendor/"
 ];
 
 const EXCLUDED_FILES = new Set([

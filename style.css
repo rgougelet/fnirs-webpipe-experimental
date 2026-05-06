@@ -163,9 +163,7 @@ canvas {
   vertical-align: top;
 }
 
-body {
-  overflow: hidden;
-}
+body { overflow: hidden; }
 
 #appShell {
   display: grid;

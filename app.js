@@ -135,6 +135,10 @@ const DEFAULT_DPF = {
   wl1: 6.0,
   wl2: 6.0
 };
+const protocolApi = window.fnirsProtocol;
+if (!protocolApi) {
+  throw new Error("fnirsProtocol API missing. Ensure protocol.js loads before app.js.");
+}
 // Extinction coefficients below match Homer3 GetExtinctions default spectrum
 // (Wray et al., 1988) at 760/850 nm after 2.303 scaling. Values are stored in
 // [(1/cm)/(mmol/L)] so the MBLL solve returns mmol/L before conversion to uM.
@@ -1478,148 +1482,73 @@ function renderMeta() {
 
 /* ================= Protocol object, export, import ================= */
 
-function buildProtocolObject() {
-  const label = (branchTagInput ? branchTagInput.value.trim() : "") || "";
-  const notes = notesInput ? notesInput.value : "";
+function getProtocolSummaryDeps() {
+  return {
+    currentWavelength,
+    currentChannel,
+    channelLabels,
+    numberOrNull,
+    formatHz
+  };
+}
 
-  const intervals = parseIntervals(exclusionTable.value);
-  const validated = validateFilterSpec(samplingRate, getRequestedFilterSpec());
-  const filterEngine = getFilterEngine();
-  const dcRestore = isDcRestoreEnabled();
-  const mbllConfig = getCurrentMbllConfig();
-
-  const steps = [];
-
-  steps.push({
-    step: "transform_intensity_to_od",
-    enabled: getSignalDomain() === "delta_od",
-    output: "delta_od"
-  });
-
-  steps.push({
-    step: "filter_butterworth_iir",
-    enabled: filterStepEnabled && validated.enabled,
-    order: validated.enabled ? "auto" : null,
-    lowHz: validated.highpassPassHz,
-    highHz: validated.lowpassPassHz,
-    lowSixDbHz: validated.highpassSixDbHz,
-    highSixDbHz: validated.lowpassSixDbHz,
-    edgePaddingEnabled: validated.edgePaddingEnabled,
-    edgePaddingMode: validated.edgePaddingMode,
-    edgePaddingSeconds: validated.edgePaddingSeconds,
-    passbandRippleDb: DEFAULT_PASSBAND_RIPPLE_DB,
-    stopbandAttenuationDb: DEFAULT_STOPBAND_ATTENUATION_DB,
-    implementation: filterEngine,
-    dcRestore: dcRestore,
-    plotView: currentPlotMode,
-    amplitudePreservation: amplitudePreservationMode
-  });
-
-  steps.push({
-    step: "trim",
-    enabled: trimStepEnabled,
-    intervalsSeconds: intervals
-  });
-
-  steps.push({
-    step: "transform_od_to_hb_mbll",
-    enabled: !!mbllConfig.supported,
-    wavelengthsNm: [mbllConfig.wl1Nm, mbllConfig.wl2Nm],
-    dpf: [mbllConfig.dpf1, mbllConfig.dpf2],
-    channelDistanceMm: mbllConfig.distanceMm,
-    distanceSource: mbllConfig.distanceSource,
-    output: ["hbo_uM", "hbr_uM", "hbt_uM"]
-  });
-
-  const protocol = {
+function getProtocolNormalizationDeps() {
+  return {
     protocolSchemaVersion: PROTOCOL_SCHEMA_VERSION,
     appVersion: APP_VERSION,
-    createdAt: new Date().toISOString(),
-    datasetLabel: datasetLabel,
-    protocolLabel: label,
-    selection: {
-      wavelength: currentWavelength,
-      channelIndex: currentChannel
-    },
-    steps: steps,
-    notes: notes,
-    sources: {
-      hdr: sources.hdr,
-      wl1: sources.wl1,
-      wl2: sources.wl2,
-      evt: sources.evt,
-      probeInfoMat: sources.probeMat,
-      samplingRateFrom: sources.samplingRateFrom,
-      eventsFrom: sources.eventsFrom,
-      channelLabelsFrom: sources.channelLabelsFrom
-    }
+    datasetLabel,
+    minEdgePaddingSeconds: MIN_EDGE_PADDING_SECONDS,
+    defaultPassbandRippleDb: DEFAULT_PASSBAND_RIPPLE_DB,
+    defaultStopbandAttenuationDb: DEFAULT_STOPBAND_ATTENUATION_DB,
+    defaultDpf: DEFAULT_DPF,
+    defaultChannelDistanceMm: DEFAULT_CHANNEL_DISTANCE_MM,
+    numberOrNull,
+    deriveDefaultHighpassSixDbHz,
+    deriveDefaultLowpassSixDbHz,
+    normalizePlotMode
   };
+}
 
-  protocol.protocolSummary = buildProtocolSummary(protocol);
+function getProtocolBuildDeps() {
+  return {
+    protocolSchemaVersion: PROTOCOL_SCHEMA_VERSION,
+    appVersion: APP_VERSION,
+    datasetLabel,
+    protocolLabel: branchTagInput ? branchTagInput.value.trim() : "",
+    currentWavelength,
+    currentChannel,
+    intervals: parseIntervals(exclusionTable ? exclusionTable.value : ""),
+    validatedFilter: validateFilterSpec(samplingRate, getRequestedFilterSpec()),
+    filterStepEnabled,
+    trimStepEnabled,
+    notes: notesInput ? notesInput.value : "",
+    sources,
+    signalDomain: getSignalDomain(),
+    filterEngine: getFilterEngine(),
+    dcRestore: isDcRestoreEnabled(),
+    currentPlotMode,
+    amplitudePreservationMode,
+    mbllConfig: getCurrentMbllConfig(),
+    defaultPassbandRippleDb: DEFAULT_PASSBAND_RIPPLE_DB,
+    defaultStopbandAttenuationDb: DEFAULT_STOPBAND_ATTENUATION_DB,
+    ...getProtocolSummaryDeps()
+  };
+}
 
-  return protocol;
+function getProtocolProjectionDeps() {
+  return {
+    ...getProtocolNormalizationDeps(),
+    currentPlotMode,
+    maxChannelCount: data.wl1 && data.wl1[0] ? data.wl1[0].length : 0
+  };
+}
+
+function buildProtocolObject() {
+  return protocolApi.buildProtocolObject(getProtocolBuildDeps());
 }
 
 function buildProtocolSummary(protocol) {
-  const wl = protocol.selection && protocol.selection.wavelength ? protocol.selection.wavelength : currentWavelength;
-  const wlTxt = wl === "wl1" ? "760" : "850";
-
-  const chIdx = protocol.selection && Number.isFinite(Number(protocol.selection.channelIndex))
-    ? Number(protocol.selection.channelIndex)
-    : currentChannel;
-
-  const chLbl = channelLabels[chIdx] ? channelLabels[chIdx] : ("ch" + String(chIdx + 1));
-
-  const label = protocol.protocolLabel ? protocol.protocolLabel : "";
-  const labelPart = label ? ("label=" + label + " | ") : "";
-  const t = (protocol.steps || []).find(s => s.step === "transform_intensity_to_od");
-  const domainPart = (t && t.enabled) ? "domain=delta_od" : "domain=intensity";
-
-  let trimPart = "trim=none";
-  const trimStep = (protocol.steps || []).find(s => s.step === "trim");
-  if (trimStep) {
-    if (!trimStep.enabled) {
-      trimPart = "trim=off";
-    } else if (Array.isArray(trimStep.intervalsSeconds) && trimStep.intervalsSeconds.length) {
-      const n = trimStep.intervalsSeconds.length;
-      const ints = trimStep.intervalsSeconds
-        .map(x => Number(x.start).toFixed(2) + "-" + Number(x.end).toFixed(2))
-        .join(",");
-      trimPart = "trim=" + n + " [" + ints + "]";
-    }
-  }
-
-  let filterPart = "filter=off";
-  const f = (protocol.steps || []).find(s => s.step === "filter_butterworth_iir");
-  if (f && f.enabled) {
-    const low = numberOrNull(f.lowHz);
-    const high = numberOrNull(f.highHz);
-    const lowSix = numberOrNull(f.lowSixDbHz);
-    const highSix = numberOrNull(f.highSixDbHz);
-    const padEnabled = !!f.edgePaddingEnabled;
-    const padSeconds = numberOrNull(f.edgePaddingSeconds);
-    if (low !== null && high !== null) {
-      filterPart = "filter=bp[" + formatHz(lowSix) + " " + formatHz(low) + " " + formatHz(high) + " " + formatHz(highSix) + "]";
-    } else if (low !== null) {
-      filterPart = "filter=hp[" + formatHz(lowSix) + " " + formatHz(low) + "]";
-    } else if (high !== null) {
-      filterPart = "filter=lp[" + formatHz(high) + " " + formatHz(highSix) + "]";
-    } else {
-      filterPart = "filter=on";
-    }
-    if (f.dcRestore) filterPart += " dc";
-    if (padEnabled) filterPart += " pad=zero:" + formatHz(padSeconds) + "s";
-    if (f.amplitudePreservation === "rms_normalize_to_pre_filter") filterPart += " amp=rms";
-  }
-
-  let physiologyPart = "hb=off";
-  const hb = (protocol.steps || []).find(s => s.step === "transform_od_to_hb_mbll");
-  if (hb && hb.enabled) {
-    const dpf = Array.isArray(hb.dpf) ? hb.dpf.map(v => formatHz(v)).join("/") : "?/?";
-    physiologyPart = "hb=mbll dpf[" + dpf + "]";
-  }
-
-  return labelPart + "wl=" + wlTxt + " | ch=" + chLbl + " | " + domainPart + " | " + filterPart + " | " + trimPart + " | " + physiologyPart;
+  return protocolApi.buildProtocolSummary(protocol, getProtocolSummaryDeps());
 }
 
 function exportProtocol() {
@@ -1672,88 +1601,35 @@ function importProtocol() {
 }
 
 function applyProtocol(protocol) {
-  const p = normalizeProtocol(protocol);
+  const next = protocolApi.projectProtocolToUiState(protocol, getProtocolProjectionDeps());
 
-  if (branchTagInput) branchTagInput.value = p.protocolLabel || "";
-  if (notesInput) notesInput.value = p.notes || "";
+  if (branchTagInput) branchTagInput.value = next.protocolLabel;
+  if (notesInput) notesInput.value = next.notes;
 
-  const sel = p.selection || {};
-  const wl = sel.wavelength === "wl2" ? "wl2" : "wl1";
-  const ch = Number.isFinite(Number(sel.channelIndex)) ? Number(sel.channelIndex) : 0;
-
-  currentWavelength = wl;
-  currentChannel = ch;
-
-  if (data.wl1 && currentChannel >= data.wl1[0].length) currentChannel = data.wl1[0].length - 1;
-  if (currentChannel < 0) currentChannel = 0;
-
-  const trimStep = (p.steps || []).find(s => s.step === "trim");
-  trimStepEnabled = !trimStep || !!trimStep.enabled;
-  if (trimStep && Array.isArray(trimStep.intervalsSeconds)) {
-    exclusionTable.value = trimStep.intervalsSeconds
-      .map(x => Number(x.start) + "," + Number(x.end))
-      .join("\n");
-  } else {
-    exclusionTable.value = "";
-  }
+  currentWavelength = next.wavelength;
+  currentChannel = next.channelIndex;
+  trimStepEnabled = next.trimStepEnabled;
+  if (exclusionTable) exclusionTable.value = next.exclusionText;
   if (trimStepCheckbox) trimStepCheckbox.checked = trimStepEnabled;
+  if (signalDomainSelect) signalDomainSelect.value = next.signalDomain;
+  if (dpfWl1Input) dpfWl1Input.value = next.dpfWl1;
+  if (dpfWl2Input) dpfWl2Input.value = next.dpfWl2;
 
-  const transformStep = (p.steps || []).find(s => s.step === "transform_intensity_to_od");
-  if (signalDomainSelect) {
-    signalDomainSelect.value = (transformStep && transformStep.enabled) ? "delta_od" : "intensity";
-  }
-  const hbStep = (p.steps || []).find(s => s.step === "transform_od_to_hb_mbll");
-  if (hbStep) {
-    const dpf = Array.isArray(hbStep.dpf) ? hbStep.dpf : [DEFAULT_DPF.wl1, DEFAULT_DPF.wl2];
-    if (dpfWl1Input) dpfWl1Input.value = String(numberOrNull(dpf[0]) || DEFAULT_DPF.wl1);
-    if (dpfWl2Input) dpfWl2Input.value = String(numberOrNull(dpf[1]) || DEFAULT_DPF.wl2);
-  } else {
-    if (dpfWl1Input) dpfWl1Input.value = String(DEFAULT_DPF.wl1);
-    if (dpfWl2Input) dpfWl2Input.value = String(DEFAULT_DPF.wl2);
-  }
-
-  const f = (p.steps || []).find(s => s.step === "filter_butterworth_iir");
-  const requestedPlotView = (f && typeof f.plotView === "string")
-    ? normalizePlotMode(f.plotView)
-    : currentPlotMode;
-  if (f) {
-    const hpPass = numberOrNull(f.lowHz);
-    const lpPass = numberOrNull(f.highHz);
-    const hpSix = numberOrNull(f.lowSixDbHz);
-    const lpSix = numberOrNull(f.highSixDbHz);
-    const padEnabled = !!f.edgePaddingEnabled;
-    const padSeconds = numberOrNull(f.edgePaddingSeconds);
-    filterStepEnabled = !!f.enabled;
-    lowCutEnabled = filterStepEnabled && hpPass !== null;
-    highCutEnabled = filterStepEnabled && lpPass !== null;
-    lowCutInput.value = hpPass === null ? "0.1" : String(hpPass);
-    if (lowCutSixDbInput) lowCutSixDbInput.value = String(hpSix === null ? deriveDefaultHighpassSixDbHz(hpPass || 0.1) : hpSix);
-    highCutInput.value = lpPass === null ? "10.0" : String(lpPass);
-    if (highCutSixDbInput) highCutSixDbInput.value = String(lpSix === null ? deriveDefaultLowpassSixDbHz(lpPass || 10.0) : lpSix);
-    if (filterEngineSelect) {
-      filterEngineSelect.value = "rjg_sos";
-    }
-    if (dcRestoreCheckbox) dcRestoreCheckbox.checked = !!f.dcRestore;
-    if (edgePaddingCheckbox) edgePaddingCheckbox.checked = padEnabled;
-    if (edgePaddingSecondsInput) edgePaddingSecondsInput.value = String(padSeconds === null ? MIN_EDGE_PADDING_SECONDS : Math.max(MIN_EDGE_PADDING_SECONDS, padSeconds));
-    amplitudePreservationMode = "none";
-  } else {
-    filterStepEnabled = true;
-    lowCutEnabled = true;
-    highCutEnabled = true;
-    lowCutInput.value = "0.1";
-    if (lowCutSixDbInput) lowCutSixDbInput.value = "0.05";
-    highCutInput.value = "10.0";
-    if (highCutSixDbInput) highCutSixDbInput.value = "12.5";
-    if (filterEngineSelect) filterEngineSelect.value = "rjg_sos";
-    if (dcRestoreCheckbox) dcRestoreCheckbox.checked = true;
-    if (edgePaddingCheckbox) edgePaddingCheckbox.checked = true;
-    if (edgePaddingSecondsInput) edgePaddingSecondsInput.value = String(MIN_EDGE_PADDING_SECONDS);
-    amplitudePreservationMode = "none";
-  }
+  filterStepEnabled = next.filter.filterStepEnabled;
+  lowCutEnabled = next.filter.lowCutEnabled;
+  highCutEnabled = next.filter.highCutEnabled;
+  lowCutInput.value = next.filter.lowCutValue;
+  if (lowCutSixDbInput) lowCutSixDbInput.value = next.filter.lowCutSixDbValue;
+  highCutInput.value = next.filter.highCutValue;
+  if (highCutSixDbInput) highCutSixDbInput.value = next.filter.highCutSixDbValue;
+  if (filterEngineSelect) filterEngineSelect.value = next.filter.filterEngineValue;
+  if (dcRestoreCheckbox) dcRestoreCheckbox.checked = next.filter.dcRestore;
+  if (edgePaddingCheckbox) edgePaddingCheckbox.checked = next.filter.edgePaddingEnabled;
+  if (edgePaddingSecondsInput) edgePaddingSecondsInput.value = next.filter.edgePaddingSeconds;
+  amplitudePreservationMode = "none";
   if (filterStepCheckbox) filterStepCheckbox.checked = filterStepEnabled;
-  if (plotModeSelect) plotModeSelect.value = requestedPlotView;
-  setPlotMode(requestedPlotView);
+  if (plotModeSelect) plotModeSelect.value = next.filter.requestedPlotView;
+  setPlotMode(next.filter.requestedPlotView);
   updateFilterToggleButtons();
   updatePipelineSummary();
 
@@ -1768,16 +1644,7 @@ function copyProtocolLink() {
   if (!data.wl1) return;
 
   const proto = buildProtocolObject();
-  const compact = {
-    protocolSchemaVersion: proto.protocolSchemaVersion,
-    protocolLabel: proto.protocolLabel,
-    selection: proto.selection,
-    steps: proto.steps,
-    notes: proto.notes,
-    protocolSummary: proto.protocolSummary
-  };
-
-  const enc = encodeForUrl(compact);
+  const enc = protocolApi.encodeForUrl(protocolApi.buildProtocolShareObject(proto));
   if (!enc) return;
 
   const base = window.location.href.split("#")[0];
@@ -1803,167 +1670,19 @@ function initUrlProtocolListener() {
 }
 
 function parseProtocolFromHash() {
-  const h = window.location.hash || "";
-  const m = h.match(/#protocol=([^&]+)/);
-  if (!m) return null;
-
-  try {
-    const json = decodeFromUrl(m[1]);
-    const obj = JSON.parse(json);
-    return normalizeProtocol(obj);
-  } catch {
-    return null;
-  }
-}
-
-function encodeForUrl(obj) {
-  try {
-    const json = JSON.stringify(obj);
-    return base64EncodeUtf8(json);
-  } catch {
-    return null;
-  }
-}
-
-function decodeFromUrl(s) {
-  return base64DecodeUtf8(s);
+  return protocolApi.parseProtocolFromHash(window.location.hash || "", getProtocolNormalizationDeps());
 }
 
 /* ================= Protocol normalization ================= */
 
 function normalizeProtocol(raw) {
-  const out = {
-    protocolSchemaVersion: PROTOCOL_SCHEMA_VERSION,
-    appVersion: APP_VERSION,
-    createdAt: raw && raw.createdAt ? raw.createdAt : new Date().toISOString(),
-    datasetLabel: raw && typeof raw.datasetLabel === "string" ? raw.datasetLabel : datasetLabel,
-    protocolLabel: raw && typeof raw.protocolLabel === "string" ? raw.protocolLabel : "",
-    selection: {
-      wavelength: raw && raw.selection && raw.selection.wavelength === "wl1" ? "wl1" : "wl2",
-      channelIndex: raw && raw.selection && Number.isFinite(Number(raw.selection.channelIndex))
-        ? Number(raw.selection.channelIndex)
-        : 0
-    },
-    steps: Array.isArray(raw && raw.steps) ? raw.steps : [],
-    notes: raw && typeof raw.notes === "string" ? raw.notes : "",
-    sources: raw && raw.sources && typeof raw.sources === "object" ? raw.sources : {},
-    protocolSummary: raw && typeof raw.protocolSummary === "string" ? raw.protocolSummary : ""
-  };
-
-  if (!out.steps.length) {
-    out.steps = [
-      { step: "transform_intensity_to_od", enabled: false, output: "delta_od" },
-      {
-        step: "filter_butterworth_iir",
-        enabled: false,
-        order: null,
-        lowHz: null,
-        highHz: null,
-        lowSixDbHz: null,
-        highSixDbHz: null,
-        edgePaddingEnabled: true,
-        edgePaddingMode: "zero",
-        edgePaddingSeconds: MIN_EDGE_PADDING_SECONDS,
-        passbandRippleDb: DEFAULT_PASSBAND_RIPPLE_DB,
-        stopbandAttenuationDb: DEFAULT_STOPBAND_ATTENUATION_DB,
-        implementation: "rjg_sos",
-        dcRestore: true,
-        plotView: "raw",
-        amplitudePreservation: "none"
-      },
-      { step: "trim", enabled: true, intervalsSeconds: [] },
-      {
-        step: "transform_od_to_hb_mbll",
-        enabled: true,
-        wavelengthsNm: [760, 850],
-        dpf: [DEFAULT_DPF.wl1, DEFAULT_DPF.wl2],
-        channelDistanceMm: DEFAULT_CHANNEL_DISTANCE_MM,
-        distanceSource: "default",
-        output: ["hbo_uM", "hbr_uM", "hbt_uM"]
-      }
-    ];
-  }
-
-  let transform = out.steps.find(s => s.step === "transform_intensity_to_od");
-  if (!transform) {
-    transform = { step: "transform_intensity_to_od", enabled: false, output: "delta_od" };
-    out.steps.unshift(transform);
-  }
-  transform.enabled = !!transform.enabled;
-  transform.output = "delta_od";
-
-  const trim = out.steps.find(s => s.step === "trim");
-  if (trim) {
-    trim.enabled = !!trim.enabled;
-    if (!Array.isArray(trim.intervalsSeconds)) trim.intervalsSeconds = [];
-    trim.intervalsSeconds = trim.intervalsSeconds
-      .map(x => ({ start: Number(x.start), end: Number(x.end) }))
-      .filter(x => Number.isFinite(x.start) && Number.isFinite(x.end) && x.start < x.end);
-  }
-
-  const f = out.steps.find(s => s.step === "filter_butterworth_iir");
-  if (f) {
-    f.enabled = !!f.enabled;
-    f.order = f.enabled ? "auto" : null;
-    f.lowHz = numberOrNull(f.lowHz);
-    f.highHz = numberOrNull(f.highHz);
-    f.lowSixDbHz = numberOrNull(f.lowSixDbHz);
-    f.highSixDbHz = numberOrNull(f.highSixDbHz);
-    f.edgePaddingEnabled = !!f.edgePaddingEnabled;
-    f.edgePaddingMode = "zero";
-    f.edgePaddingSeconds = numberOrNull(f.edgePaddingSeconds) === null ? MIN_EDGE_PADDING_SECONDS : Math.max(MIN_EDGE_PADDING_SECONDS, Number(f.edgePaddingSeconds));
-    if (f.lowHz !== null && f.lowSixDbHz === null) {
-      f.lowSixDbHz = deriveDefaultHighpassSixDbHz(f.lowHz);
-    }
-    if (f.highHz !== null && f.highSixDbHz === null) {
-      f.highSixDbHz = deriveDefaultLowpassSixDbHz(f.highHz);
-    }
-    f.passbandRippleDb = numberOrNull(f.passbandRippleDb) === null ? DEFAULT_PASSBAND_RIPPLE_DB : Number(f.passbandRippleDb);
-    f.stopbandAttenuationDb = numberOrNull(f.stopbandAttenuationDb) === null ? DEFAULT_STOPBAND_ATTENUATION_DB : Number(f.stopbandAttenuationDb);
-    f.implementation = "rjg_sos";
-    f.dcRestore = (typeof f.dcRestore === "boolean") ? f.dcRestore : true;
-    f.plotView = normalizePlotMode(f.plotView);
-    f.amplitudePreservation = "none";
-  }
-
-  let hb = out.steps.find(s => s.step === "transform_od_to_hb_mbll");
-  if (!hb) {
-    hb = {
-      step: "transform_od_to_hb_mbll",
-      enabled: true,
-      wavelengthsNm: [760, 850],
-      dpf: [DEFAULT_DPF.wl1, DEFAULT_DPF.wl2],
-      channelDistanceMm: DEFAULT_CHANNEL_DISTANCE_MM,
-      distanceSource: "default",
-      output: ["hbo_uM", "hbr_uM", "hbt_uM"]
-    };
-    out.steps.push(hb);
-  }
-  hb.enabled = (typeof hb.enabled === "boolean") ? hb.enabled : true;
-  if (!Array.isArray(hb.dpf) || hb.dpf.length < 2) hb.dpf = [DEFAULT_DPF.wl1, DEFAULT_DPF.wl2];
-  hb.dpf = hb.dpf.map((v, idx) => {
-    const fallback = idx === 0 ? DEFAULT_DPF.wl1 : DEFAULT_DPF.wl2;
-    const parsed = numberOrNull(v);
-    return parsed === null || parsed <= 0 ? fallback : parsed;
-  }).slice(0, 2);
-  hb.channelDistanceMm = numberOrNull(hb.channelDistanceMm) === null ? DEFAULT_CHANNEL_DISTANCE_MM : Number(hb.channelDistanceMm);
-  hb.distanceSource = typeof hb.distanceSource === "string" ? hb.distanceSource : "default";
-  hb.output = ["hbo_uM", "hbr_uM", "hbt_uM"];
-
-  out.protocolSummary = buildProtocolSummary(out);
-  return out;
+  return protocolApi.normalizeProtocol(raw, getProtocolNormalizationDeps());
 }
 
 /* ================= Filename helpers ================= */
 
 function defaultProtocolFilename(protocol) {
-  const base = sanitizeFilename(protocol.datasetLabel || "fnirs-webpipe");
-  const label = sanitizeFilename((protocol.protocolLabel || "").trim());
-
-  let name = base;
-  if (label) name += "_" + label;
-  name += "_protocol.pipe";
-  return name;
+  return protocolApi.defaultProtocolFilename(protocol, { sanitizeFilename });
 }
 
 /* ================= Misc helpers and parsing ================= */
@@ -2057,16 +1776,6 @@ function escapeHtml(s) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-}
-
-function base64EncodeUtf8(s) {
-  return btoa(unescape(encodeURIComponent(s))).replace(/=+$/g, "");
-}
-
-function base64DecodeUtf8(b64) {
-  const padLen = (4 - (b64.length % 4)) % 4;
-  const padded = b64 + "====".slice(0, padLen);
-  return decodeURIComponent(escape(atob(padded)));
 }
 
 function rmsNormalize(ref, x, edgeSamples) {
