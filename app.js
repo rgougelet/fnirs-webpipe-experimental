@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.5";
-const APP_LAST_UPDATED = "2026-05-06 10:29 EDT";
+const APP_VERSION = "0.3.6";
+const APP_LAST_UPDATED = "2026-05-06 10:45 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -1335,114 +1335,39 @@ function redraw() {
   const rawIntensity = data[currentWavelength].map(r => r[currentChannel]);
   const signalDomain = getSignalDomain();
   const raw = signalDomain === "delta_od" ? intensityToDeltaOd(rawIntensity) : rawIntensity.slice();
-  let filtered = raw.slice();
-  let filterLabel = "no filter";
-
   const requestedSpec = getRequestedFilterSpec();
   const validated = validateFilterSpec(samplingRate, requestedSpec);
   const activeFilterSpec = filterStepEnabled && validated.enabled ? validated : null;
   const filterEngine = getFilterEngine();
   const dcRestore = isDcRestoreEnabled();
-
-  if (activeFilterSpec) {
-    filtered = applyRjgButterworth(raw, samplingRate, activeFilterSpec, filterEngine);
-    if (amplitudePreservationMode === "rms_normalize_to_pre_filter") {
-      filtered = rmsNormalize(raw, filtered, Math.ceil(samplingRate || 0));
-    }
-    if (dcRestore) filtered = restoreDcMean(raw, filtered);
-    filterLabel = describeFilterSpec(activeFilterSpec);
-  } else if (!filterStepEnabled) {
-    filterLabel = "disabled";
-  }
+  const filterLabel = activeFilterSpec
+    ? describeFilterSpec(activeFilterSpec)
+    : (filterStepEnabled ? "no filter" : "disabled");
 
   const intervals = parseIntervals(exclusionTable.value);
-  const processed = trimStepEnabled ? applyExclusions(filtered, intervals) : filtered.slice();
-  const trimmedEvents = trimStepEnabled
-    ? adjustEvents(events, intervals)
-    : events.map(e => ({ time: e.sample / samplingRate, code: e.code, label: eventDisplayLabel(e) }));
   const rawEvents = events.map(e => ({ time: e.sample / samplingRate, code: e.code, label: eventDisplayLabel(e) }));
   const rawDisplay = getDisplayWindow(raw, rawEvents, intervals, samplingRate, activeFilterSpec);
-  const processedDisplay = getDisplayWindow(processed, trimmedEvents, null, samplingRate, activeFilterSpec);
   updateViewNavigationUi(rawDisplay.series.length / samplingRate);
   const requestedWindow = getRequestedPlotWindowSeconds(rawDisplay.series.length / samplingRate);
   const windowStartSeconds = getWindowStartSeconds(rawDisplay.series.length / samplingRate, requestedWindow);
   const rawWindowed = sliceDisplayByTimeWindow(rawDisplay, samplingRate, windowStartSeconds, requestedWindow);
-  const processedWindowed = sliceDisplayByTimeWindow(processedDisplay, samplingRate, rawWindowed.startSeconds, requestedWindow);
-
-  const rawIntensityWl1 = data.wl1.map(r => r[currentChannel]);
-  const rawIntensityWl2 = data.wl2.map(r => r[currentChannel]);
-  const deltaOdWl1 = intensityToDeltaOd(rawIntensityWl1);
-  const deltaOdWl2 = intensityToDeltaOd(rawIntensityWl2);
-
-  let filteredOdWl1 = deltaOdWl1.slice();
-  let filteredOdWl2 = deltaOdWl2.slice();
-  if (activeFilterSpec) {
-    filteredOdWl1 = applyRjgButterworth(deltaOdWl1, samplingRate, activeFilterSpec, filterEngine);
-    filteredOdWl2 = applyRjgButterworth(deltaOdWl2, samplingRate, activeFilterSpec, filterEngine);
-    if (amplitudePreservationMode === "rms_normalize_to_pre_filter") {
-      filteredOdWl1 = rmsNormalize(deltaOdWl1, filteredOdWl1, Math.ceil(samplingRate || 0));
-      filteredOdWl2 = rmsNormalize(deltaOdWl2, filteredOdWl2, Math.ceil(samplingRate || 0));
-    }
-    if (dcRestore) {
-      filteredOdWl1 = restoreDcMean(deltaOdWl1, filteredOdWl1);
-      filteredOdWl2 = restoreDcMean(deltaOdWl2, filteredOdWl2);
-    }
-  }
-
-  const processedOdWl1 = trimStepEnabled ? applyExclusions(filteredOdWl1, intervals) : filteredOdWl1.slice();
-  const processedOdWl2 = trimStepEnabled ? applyExclusions(filteredOdWl2, intervals) : filteredOdWl2.slice();
-
-  const intensityDisplayWl1 = getDisplayWindow(rawIntensityWl1, rawEvents, intervals, samplingRate, activeFilterSpec);
-  const intensityDisplayWl2 = getDisplayWindow(rawIntensityWl2, rawEvents, intervals, samplingRate, activeFilterSpec);
-  const deltaOdDisplayWl1 = getDisplayWindow(deltaOdWl1, rawEvents, intervals, samplingRate, activeFilterSpec);
-  const deltaOdDisplayWl2 = getDisplayWindow(deltaOdWl2, rawEvents, intervals, samplingRate, activeFilterSpec);
-  const processedOdDisplayWl1 = getDisplayWindow(processedOdWl1, trimmedEvents, null, samplingRate, activeFilterSpec);
-  const processedOdDisplayWl2 = getDisplayWindow(processedOdWl2, trimmedEvents, null, samplingRate, activeFilterSpec);
-
-  const intensityWindowedWl1 = sliceDisplayByTimeWindow(intensityDisplayWl1, samplingRate, rawWindowed.startSeconds, requestedWindow);
-  const intensityWindowedWl2 = sliceDisplayByTimeWindow(intensityDisplayWl2, samplingRate, rawWindowed.startSeconds, requestedWindow);
-  const deltaOdWindowedWl1 = sliceDisplayByTimeWindow(deltaOdDisplayWl1, samplingRate, rawWindowed.startSeconds, requestedWindow);
-  const deltaOdWindowedWl2 = sliceDisplayByTimeWindow(deltaOdDisplayWl2, samplingRate, rawWindowed.startSeconds, requestedWindow);
-  const processedOdWindowedWl1 = sliceDisplayByTimeWindow(processedOdDisplayWl1, samplingRate, rawWindowed.startSeconds, requestedWindow);
-  const processedOdWindowedWl2 = sliceDisplayByTimeWindow(processedOdDisplayWl2, samplingRate, rawWindowed.startSeconds, requestedWindow);
-
-  const mbllConfig = getCurrentMbllConfig();
-  const hbSeries = deltaOdToHemoglobin(processedOdWl1, processedOdWl2, mbllConfig);
-  let hbWindowed = null;
-  if (hbSeries) {
-    const hbDisplayHbo = getDisplayWindow(hbSeries.hbo, trimmedEvents, null, samplingRate, activeFilterSpec);
-    const hbDisplayHbr = getDisplayWindow(hbSeries.hbr, trimmedEvents, null, samplingRate, activeFilterSpec);
-    const hbDisplayHbt = getDisplayWindow(hbSeries.hbt, trimmedEvents, null, samplingRate, activeFilterSpec);
-    hbWindowed = {
-      hbo: sliceDisplayByTimeWindow(hbDisplayHbo, samplingRate, rawWindowed.startSeconds, requestedWindow),
-      hbr: sliceDisplayByTimeWindow(hbDisplayHbr, samplingRate, rawWindowed.startSeconds, requestedWindow),
-      hbt: sliceDisplayByTimeWindow(hbDisplayHbt, samplingRate, rawWindowed.startSeconds, requestedWindow)
-    };
-  }
 
   const wlLabel = currentWavelength === "wl1" ? getWavelengthLabel(0) : getWavelengthLabel(1);
   const chLabel = channelLabels[currentChannel] || ("ch" + String(currentChannel + 1));
   const domainLabel = signalDomain === "delta_od" ? "Delta OD" : "Intensity";
   const rawRangeLabel = formatWindowRangeLabel(rawWindowed.startSeconds, rawWindowed.series.length / samplingRate);
-  const processedRangeLabel = formatWindowRangeLabel(processedWindowed.startSeconds, processedWindowed.series.length / samplingRate);
   if (rawPlotHeaderEl) rawPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Input (" + domainLabel + ", " + rawRangeLabel + ") | " + formatStats(computeStats(rawWindowed.series));
-  if (trimPlotHeaderEl) trimPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Output (" + filterLabel + (trimStepEnabled ? ", trim on" : ", trim off") + ", " + processedRangeLabel + ") | " + formatStats(computeStats(processedWindowed.series));
-  if (hboPlotHeaderEl) {
-    if (hbWindowed && hbWindowed.hbo.series.length) {
-      const hboRangeLabel = formatWindowRangeLabel(hbWindowed.hbo.startSeconds, hbWindowed.hbo.series.length / samplingRate);
-      hboPlotHeaderEl.textContent = chLabel + " HbO (MBLL, " + hboRangeLabel + ") | " + formatStats(computeStats(hbWindowed.hbo.series));
-    } else {
-      hboPlotHeaderEl.textContent = chLabel + " HbO (MBLL unavailable)";
-    }
-  }
-  if (hbrPlotHeaderEl) {
-    if (hbWindowed && hbWindowed.hbr.series.length) {
-      const hbrRangeLabel = formatWindowRangeLabel(hbWindowed.hbr.startSeconds, hbWindowed.hbr.series.length / samplingRate);
-      hbrPlotHeaderEl.textContent = chLabel + " HbR (MBLL, " + hbrRangeLabel + ") | " + formatStats(computeStats(hbWindowed.hbr.series));
-    } else {
-      hbrPlotHeaderEl.textContent = chLabel + " HbR (MBLL unavailable)";
-    }
-  }
+  if (trimPlotHeaderEl) trimPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Output (" + filterLabel + (trimStepEnabled ? ", trim on" : ", trim off") + ")";
+  if (hboPlotHeaderEl) hboPlotHeaderEl.textContent = chLabel + " HbO";
+  if (hbrPlotHeaderEl) hbrPlotHeaderEl.textContent = chLabel + " HbR";
+
+  const stageSummaryVisible = !!(stageSummaryHost && stageSummaryHost.style.display !== "none");
+  const needsProcessedCurrent = currentPlotMode === "trimmed" || stageSummaryVisible;
+  const needsHemoglobin = currentPlotMode === "hbo" || currentPlotMode === "hbr" || stageSummaryVisible;
+  let trimmedEvents = null;
+  let processedWindowed = null;
+  let hbWindowed = null;
+  let stageSummaryModel = null;
 
   if (currentPlotMode === "raw") {
     drawPlot(
@@ -1459,7 +1384,27 @@ function redraw() {
         yLabel: signalDomain === "delta_od" ? "Delta OD" : "Intensity (a.u.)"
       }
     );
-  } else if (currentPlotMode === "trimmed") {
+  }
+
+  if (needsProcessedCurrent || needsHemoglobin) {
+    trimmedEvents = trimStepEnabled
+      ? adjustEvents(events, intervals)
+      : rawEvents.map(e => ({ time: e.time, code: e.code, label: e.label }));
+  }
+
+  if (needsProcessedCurrent) {
+    const filtered = applyConfiguredFilter(raw, activeFilterSpec, filterEngine, dcRestore);
+    const processed = trimStepEnabled ? applyExclusions(filtered, intervals) : filtered.slice();
+    const processedDisplay = getDisplayWindow(processed, trimmedEvents, null, samplingRate, activeFilterSpec);
+    processedWindowed = sliceDisplayByTimeWindow(processedDisplay, samplingRate, rawWindowed.startSeconds, requestedWindow);
+
+    if (trimPlotHeaderEl) {
+      const processedRangeLabel = formatWindowRangeLabel(processedWindowed.startSeconds, processedWindowed.series.length / samplingRate);
+      trimPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Output (" + filterLabel + (trimStepEnabled ? ", trim on" : ", trim off") + ", " + processedRangeLabel + ") | " + formatStats(computeStats(processedWindowed.series));
+    }
+  }
+
+  if (currentPlotMode === "trimmed" && processedWindowed) {
     drawPlot(
       ctxTrim,
       canvasTrim,
@@ -1474,67 +1419,124 @@ function redraw() {
         yLabel: signalDomain === "delta_od" ? "Delta OD" : "Intensity (a.u.)"
       }
     );
-  } else if (currentPlotMode === "hbo" && hbWindowed && hbWindowed.hbo.series.length) {
-    drawPlot(
-      ctxHbO,
-      canvasHbO,
-      hbWindowed.hbo.series,
-      samplingRate,
-      [],
-      hbWindowed.hbo.events,
-      chLabel + " HbO",
-      "",
-      {
-        timeOffsetSeconds: hbWindowed.hbo.startSeconds,
-        yLabel: "Delta HbO (uM)",
-        seriesList: [
-          { label: "HbO", data: hbWindowed.hbo.series, color: "#dc2626" }
-        ]
-      }
-    );
-  } else if (currentPlotMode === "hbr" && hbWindowed && hbWindowed.hbr.series.length) {
-    drawPlot(
-      ctxHbR,
-      canvasHbR,
-      hbWindowed.hbr.series,
-      samplingRate,
-      [],
-      hbWindowed.hbr.events,
-      chLabel + " HbR",
-      "",
-      {
-        timeOffsetSeconds: hbWindowed.hbr.startSeconds,
-        yLabel: "Delta HbR (uM)",
-        seriesList: [
-          { label: "HbR", data: hbWindowed.hbr.series, color: "#2563eb" }
-        ]
-      }
-    );
   }
 
-  if (!hbWindowed || !hbWindowed.hbo.series.length) {
-    ctxHbO.clearRect(0, 0, canvasHbO.width, canvasHbO.height);
-    ctxHbR.clearRect(0, 0, canvasHbR.width, canvasHbR.height);
+  if (needsHemoglobin) {
+    const rawIntensityWl1 = data.wl1.map(r => r[currentChannel]);
+    const rawIntensityWl2 = data.wl2.map(r => r[currentChannel]);
+    const deltaOdWl1 = intensityToDeltaOd(rawIntensityWl1);
+    const deltaOdWl2 = intensityToDeltaOd(rawIntensityWl2);
+    const filteredOdWl1 = applyConfiguredFilter(deltaOdWl1, activeFilterSpec, filterEngine, dcRestore);
+    const filteredOdWl2 = applyConfiguredFilter(deltaOdWl2, activeFilterSpec, filterEngine, dcRestore);
+    const processedOdWl1 = trimStepEnabled ? applyExclusions(filteredOdWl1, intervals) : filteredOdWl1.slice();
+    const processedOdWl2 = trimStepEnabled ? applyExclusions(filteredOdWl2, intervals) : filteredOdWl2.slice();
+    const mbllConfig = getCurrentMbllConfig();
+    const hbSeries = deltaOdToHemoglobin(processedOdWl1, processedOdWl2, mbllConfig);
+
+    if (hbSeries) {
+      hbWindowed = {};
+      if (currentPlotMode === "hbo" || stageSummaryVisible) {
+        const hbDisplayHbo = getDisplayWindow(hbSeries.hbo, trimmedEvents, null, samplingRate, activeFilterSpec);
+        hbWindowed.hbo = sliceDisplayByTimeWindow(hbDisplayHbo, samplingRate, rawWindowed.startSeconds, requestedWindow);
+      }
+      if (currentPlotMode === "hbr" || stageSummaryVisible) {
+        const hbDisplayHbr = getDisplayWindow(hbSeries.hbr, trimmedEvents, null, samplingRate, activeFilterSpec);
+        hbWindowed.hbr = sliceDisplayByTimeWindow(hbDisplayHbr, samplingRate, rawWindowed.startSeconds, requestedWindow);
+      }
+      if (stageSummaryVisible) {
+        const hbDisplayHbt = getDisplayWindow(hbSeries.hbt, trimmedEvents, null, samplingRate, activeFilterSpec);
+        hbWindowed.hbt = sliceDisplayByTimeWindow(hbDisplayHbt, samplingRate, rawWindowed.startSeconds, requestedWindow);
+      }
+    }
+
+    if (currentPlotMode === "hbo") {
+      if (hbWindowed && hbWindowed.hbo && hbWindowed.hbo.series.length) {
+        const hboRangeLabel = formatWindowRangeLabel(hbWindowed.hbo.startSeconds, hbWindowed.hbo.series.length / samplingRate);
+        if (hboPlotHeaderEl) hboPlotHeaderEl.textContent = chLabel + " HbO (MBLL, " + hboRangeLabel + ") | " + formatStats(computeStats(hbWindowed.hbo.series));
+        drawPlot(
+          ctxHbO,
+          canvasHbO,
+          hbWindowed.hbo.series,
+          samplingRate,
+          [],
+          hbWindowed.hbo.events,
+          chLabel + " HbO",
+          "",
+          {
+            timeOffsetSeconds: hbWindowed.hbo.startSeconds,
+            yLabel: "Delta HbO (uM)",
+            seriesList: [
+              { label: "HbO", data: hbWindowed.hbo.series, color: "#dc2626" }
+            ]
+          }
+        );
+      } else {
+        if (hboPlotHeaderEl) hboPlotHeaderEl.textContent = chLabel + " HbO (MBLL unavailable)";
+        ctxHbO.clearRect(0, 0, canvasHbO.width, canvasHbO.height);
+      }
+    }
+
+    if (currentPlotMode === "hbr") {
+      if (hbWindowed && hbWindowed.hbr && hbWindowed.hbr.series.length) {
+        const hbrRangeLabel = formatWindowRangeLabel(hbWindowed.hbr.startSeconds, hbWindowed.hbr.series.length / samplingRate);
+        if (hbrPlotHeaderEl) hbrPlotHeaderEl.textContent = chLabel + " HbR (MBLL, " + hbrRangeLabel + ") | " + formatStats(computeStats(hbWindowed.hbr.series));
+        drawPlot(
+          ctxHbR,
+          canvasHbR,
+          hbWindowed.hbr.series,
+          samplingRate,
+          [],
+          hbWindowed.hbr.events,
+          chLabel + " HbR",
+          "",
+          {
+            timeOffsetSeconds: hbWindowed.hbr.startSeconds,
+            yLabel: "Delta HbR (uM)",
+            seriesList: [
+              { label: "HbR", data: hbWindowed.hbr.series, color: "#2563eb" }
+            ]
+          }
+        );
+      } else {
+        if (hbrPlotHeaderEl) hbrPlotHeaderEl.textContent = chLabel + " HbR (MBLL unavailable)";
+        ctxHbR.clearRect(0, 0, canvasHbR.width, canvasHbR.height);
+      }
+    }
+
+    if (stageSummaryVisible) {
+      const intensityDisplayWl1 = getDisplayWindow(rawIntensityWl1, rawEvents, intervals, samplingRate, activeFilterSpec);
+      const intensityDisplayWl2 = getDisplayWindow(rawIntensityWl2, rawEvents, intervals, samplingRate, activeFilterSpec);
+      const deltaOdDisplayWl1 = getDisplayWindow(deltaOdWl1, rawEvents, intervals, samplingRate, activeFilterSpec);
+      const deltaOdDisplayWl2 = getDisplayWindow(deltaOdWl2, rawEvents, intervals, samplingRate, activeFilterSpec);
+      const processedOdDisplayWl1 = getDisplayWindow(processedOdWl1, trimmedEvents, null, samplingRate, activeFilterSpec);
+      const processedOdDisplayWl2 = getDisplayWindow(processedOdWl2, trimmedEvents, null, samplingRate, activeFilterSpec);
+
+      stageSummaryModel = {
+        filterLabel,
+        trimEnabled: trimStepEnabled,
+        intensityWindowedWl1: sliceDisplayByTimeWindow(intensityDisplayWl1, samplingRate, rawWindowed.startSeconds, requestedWindow),
+        intensityWindowedWl2: sliceDisplayByTimeWindow(intensityDisplayWl2, samplingRate, rawWindowed.startSeconds, requestedWindow),
+        deltaOdWindowedWl1: sliceDisplayByTimeWindow(deltaOdDisplayWl1, samplingRate, rawWindowed.startSeconds, requestedWindow),
+        deltaOdWindowedWl2: sliceDisplayByTimeWindow(deltaOdDisplayWl2, samplingRate, rawWindowed.startSeconds, requestedWindow),
+        processedOdWindowedWl1: sliceDisplayByTimeWindow(processedOdDisplayWl1, samplingRate, rawWindowed.startSeconds, requestedWindow),
+        processedOdWindowedWl2: sliceDisplayByTimeWindow(processedOdDisplayWl2, samplingRate, rawWindowed.startSeconds, requestedWindow),
+        hbWindowed,
+        mbllConfig
+      };
+    }
   }
 
-  renderStageSummary({
-    filterLabel,
-    trimEnabled: trimStepEnabled,
-    intensityWindowedWl1,
-    intensityWindowedWl2,
-    deltaOdWindowedWl1,
-    deltaOdWindowedWl2,
-    processedOdWindowedWl1,
-    processedOdWindowedWl2,
-    hbWindowed,
-    mbllConfig
-  });
+  if (currentPlotMode !== "trimmed") ctxTrim.clearRect(0, 0, canvasTrim.width, canvasTrim.height);
+  if (currentPlotMode !== "hbo") ctxHbO.clearRect(0, 0, canvasHbO.width, canvasHbO.height);
+  if (currentPlotMode !== "hbr") ctxHbR.clearRect(0, 0, canvasHbR.width, canvasHbR.height);
+
+  renderStageSummary(stageSummaryVisible ? stageSummaryModel : null);
   debugLog("redraw:end", {
     elapsedMs: Number((performance.now() - redrawStartMs).toFixed(1)),
     rawSamples: rawWindowed.series.length,
-    processedSamples: processedWindowed.series.length,
+    processedSamples: processedWindowed ? processedWindowed.series.length : 0,
     plotMode: currentPlotMode,
-    hbAvailable: !!(hbWindowed && hbWindowed.hbo && hbWindowed.hbo.series.length)
+    hbAvailable: !!(hbWindowed && ((hbWindowed.hbo && hbWindowed.hbo.series.length) || (hbWindowed.hbr && hbWindowed.hbr.series.length)))
   });
 }
 
@@ -2791,6 +2793,17 @@ function restoreDcMean(ref, x) {
   const mean = arr => arr.reduce((sum, v) => sum + v, 0) / arr.length;
   const delta = mean(ref) - mean(x);
   return x.map(v => v + delta);
+}
+
+function applyConfiguredFilter(series, filterSpec, filterEngine, dcRestore) {
+  if (!Array.isArray(series) || !series.length) return [];
+  if (!filterSpec) return series.slice();
+  let filtered = applyRjgButterworth(series, samplingRate, filterSpec, filterEngine);
+  if (amplitudePreservationMode === "rms_normalize_to_pre_filter") {
+    filtered = rmsNormalize(series, filtered, Math.ceil(samplingRate || 0));
+  }
+  if (dcRestore) filtered = restoreDcMean(series, filtered);
+  return filtered;
 }
 
 function formatMetricNumber(v) {
