@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.7";
-const APP_LAST_UPDATED = "2026-05-06 11:05 EDT";
+const APP_VERSION = "0.3.8";
+const APP_LAST_UPDATED = "2026-05-06 11:53 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -824,6 +824,7 @@ function buildControls() {
   filterStepCheckbox.checked = false;
   filterStepCheckbox.onchange = () => {
     filterStepEnabled = !!filterStepCheckbox.checked;
+    updateFilterToggleButtons();
     updatePipelineSummary();
     redraw();
     renderMeta();
@@ -1020,6 +1021,7 @@ function buildControls() {
   edgePaddingCheckbox.className = "h-4 w-4 justify-self-start";
   edgePaddingCheckbox.checked = true;
   edgePaddingCheckbox.onchange = () => {
+    updateFilterToggleButtons();
     redraw();
     renderMeta();
   };
@@ -1144,16 +1146,31 @@ function updateProtocolSummaryLabel(text) {
 }
 
 function updateFilterToggleButtons() {
+  const filterMasterEnabled = !!filterStepEnabled;
+  const lowStageEnabled = filterMasterEnabled && !!lowCutEnabled;
+  const highStageEnabled = filterMasterEnabled && !!highCutEnabled;
+  const anyFilterStageEnabled = lowStageEnabled || highStageEnabled;
+
   if (lowToggleBtn) {
     lowToggleBtn.textContent = lowCutEnabled ? "✅" : "❌";
     lowToggleBtn.classList.toggle("active", lowCutEnabled);
     lowToggleBtn.classList.toggle("inactive", !lowCutEnabled);
+    lowToggleBtn.disabled = !filterMasterEnabled;
   }
   if (highToggleBtn) {
     highToggleBtn.textContent = highCutEnabled ? "✅" : "❌";
     highToggleBtn.classList.toggle("active", highCutEnabled);
     highToggleBtn.classList.toggle("inactive", !highCutEnabled);
+    highToggleBtn.disabled = !filterMasterEnabled;
   }
+  if (lowCutInput) lowCutInput.disabled = !lowStageEnabled;
+  if (lowCutSixDbInput) lowCutSixDbInput.disabled = !lowStageEnabled;
+  if (highCutInput) highCutInput.disabled = !highStageEnabled;
+  if (highCutSixDbInput) highCutSixDbInput.disabled = !highStageEnabled;
+  if (dcRestoreCheckbox) dcRestoreCheckbox.disabled = !anyFilterStageEnabled;
+  if (filterEngineSelect) filterEngineSelect.disabled = !anyFilterStageEnabled;
+  if (edgePaddingCheckbox) edgePaddingCheckbox.disabled = !anyFilterStageEnabled;
+  if (edgePaddingSecondsInput) edgePaddingSecondsInput.disabled = !anyFilterStageEnabled || !edgePaddingCheckbox || !edgePaddingCheckbox.checked;
 }
 
 function getSignalDomain() {
@@ -1605,7 +1622,7 @@ function renderMeta() {
   const validated = validateFilterSpec(samplingRate, getRequestedFilterSpec());
   const mbllConfig = getCurrentMbllConfig();
 
-  let filterText = filterStepEnabled ? "off" : "disabled";
+  let filterText = filterStepEnabled ? "no filter" : "disabled";
   if (validated.enabled) filterText = describeFilterSpec(validated);
   const dcRestore = isDcRestoreEnabled();
   const filterWarning = validated.warning ? escapeHtml(validated.warning) : "";
@@ -2293,42 +2310,11 @@ function buildDefaultChannelLabels(count) {
 }
 
 function getDisplayWindow(series, eventsIn, intervalsIn, fs, filterSpec) {
-  const out = {
+  return {
     series: Array.isArray(series) ? series.slice() : [],
     events: Array.isArray(eventsIn) ? eventsIn.map(e => ({ time: e.time, code: e.code, label: eventDisplayLabel(e) })) : [],
     intervals: Array.isArray(intervalsIn) ? intervalsIn.map(intv => ({ start: intv.start, end: intv.end })) : intervalsIn
   };
-
-  const cropSamples = getEdgeDisplayCropSamples(out.series.length, fs, filterSpec);
-  if (cropSamples <= 0 || !out.series.length) return out;
-
-  const cropSeconds = cropSamples / fs;
-  const fullDuration = out.series.length / fs;
-  const keptEnd = fullDuration - cropSeconds;
-  out.series = out.series.slice(cropSamples, out.series.length - cropSamples);
-
-  out.events = out.events
-    .filter(e => Number.isFinite(e.time) && e.time >= cropSeconds && e.time <= keptEnd)
-    .map(e => ({ time: e.time - cropSeconds, code: e.code, label: eventDisplayLabel(e) }));
-
-  if (Array.isArray(out.intervals)) {
-    out.intervals = out.intervals
-      .map(intv => ({
-        start: Math.max(intv.start, cropSeconds) - cropSeconds,
-        end: Math.min(intv.end, keptEnd) - cropSeconds
-      }))
-      .filter(intv => Number.isFinite(intv.start) && Number.isFinite(intv.end) && intv.end > intv.start);
-  }
-
-  return out;
-}
-
-function getEdgeDisplayCropSamples(length, fs, filterSpec) {
-  if (!filterSpec || !filterSpec.edgePaddingEnabled) return 0;
-  const seconds = numberOrNull(filterSpec.edgePaddingSeconds);
-  if (!Number.isFinite(fs) || fs <= 0 || seconds === null || seconds <= 0) return 0;
-  if (!Number.isFinite(length) || length < 3) return 0;
-  return Math.max(0, Math.min(Math.round(seconds * fs), Math.floor((length - 1) / 2)));
 }
 
 function getReferenceDurationSeconds() {
@@ -2647,13 +2633,14 @@ function getRequestedFilterSpec() {
   const hpSix = numberOrNull(lowCutSixDbInput ? lowCutSixDbInput.value : null);
   const lpPass = numberOrNull(highCutInput ? highCutInput.value : null);
   const lpSix = numberOrNull(highCutSixDbInput ? highCutSixDbInput.value : null);
+  const filterRequested = !!filterStepEnabled && (!!lowCutEnabled || !!highCutEnabled);
 
   return {
     highpassPassHz: filterStepEnabled && lowCutEnabled ? hpPass : null,
     highpassSixDbHz: filterStepEnabled && lowCutEnabled ? hpSix : null,
     lowpassPassHz: filterStepEnabled && highCutEnabled ? lpPass : null,
     lowpassSixDbHz: filterStepEnabled && highCutEnabled ? lpSix : null,
-    edgePaddingEnabled: !!(edgePaddingCheckbox && edgePaddingCheckbox.checked),
+    edgePaddingEnabled: filterRequested && !!(edgePaddingCheckbox && edgePaddingCheckbox.checked),
     edgePaddingMode: "zero",
     edgePaddingSeconds: numberOrNull(edgePaddingSecondsInput ? edgePaddingSecondsInput.value : null),
     passbandRippleDb: DEFAULT_PASSBAND_RIPPLE_DB,
