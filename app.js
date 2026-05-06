@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.6";
-const APP_LAST_UPDATED = "2026-05-06 10:45 EDT";
+const APP_VERSION = "0.3.7";
+const APP_LAST_UPDATED = "2026-05-06 11:05 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -29,6 +29,12 @@ canvasTrim.height = PLOT_HEIGHT;
 canvasTrim.classList.add("w-full");
 const ctxTrim = canvasTrim.getContext("2d");
 
+const canvasFiltered = document.createElement("canvas");
+canvasFiltered.width = PLOT_WIDTH;
+canvasFiltered.height = PLOT_HEIGHT;
+canvasFiltered.classList.add("w-full");
+const ctxFiltered = canvasFiltered.getContext("2d");
+
 const canvasHbO = document.createElement("canvas");
 canvasHbO.width = PLOT_WIDTH;
 canvasHbO.height = PLOT_HEIGHT;
@@ -44,6 +50,7 @@ const ctxHbR = canvasHbR.getContext("2d");
 const M = { left: 68, right: 20, top: 12, bottom: 74 };
 let rawPlotHeaderEl = null;
 let trimPlotHeaderEl = null;
+let filteredPlotHeaderEl = null;
 let hboPlotHeaderEl = null;
 let hbrPlotHeaderEl = null;
 
@@ -81,7 +88,7 @@ let trimStepCheckbox = null;
 let pipelineSummaryEl = null;
 let dpfWl1Input = null;
 let dpfWl2Input = null;
-let filterStepEnabled = true;
+let filterStepEnabled = false;
 let trimStepEnabled = true;
 let amplitudePreservationMode = "none";
 
@@ -121,6 +128,7 @@ const MIN_EDGE_PADDING_SECONDS = 10.0;
 let currentPlotMode = "raw";
 let rawPanelEl = null;
 let trimPanelEl = null;
+let filteredPanelEl = null;
 let hboPanelEl = null;
 let hbrPanelEl = null;
 let plotScrollerEl = null;
@@ -347,6 +355,7 @@ function resetAllState() {
 
 function normalizePlotMode(mode) {
   switch (mode) {
+    case "filtered":
     case "trimmed":
     case "hbo":
     case "hbr":
@@ -812,7 +821,7 @@ function buildControls() {
   filterStepCheckbox = document.createElement("input");
   filterStepCheckbox.type = "checkbox";
   filterStepCheckbox.className = "h-4 w-4";
-  filterStepCheckbox.checked = true;
+  filterStepCheckbox.checked = false;
   filterStepCheckbox.onchange = () => {
     filterStepEnabled = !!filterStepCheckbox.checked;
     updatePipelineSummary();
@@ -1038,7 +1047,7 @@ function buildControls() {
   viewCard.className = "rounded border border-slate-200 p-3 flex flex-col space-y-2";
   const layoutNote = document.createElement("div");
   layoutNote.className = "text-xs text-slate-600 leading-tight";
-  layoutNote.textContent = "Layout: single plot with tabs. Raw, Trimmed, HbO, and HbR share the current time window.";
+  layoutNote.textContent = "Layout: single plot with tabs. Raw, Trimmed, Filtered, HbO, and HbR share the current time window.";
   viewCard.appendChild(layoutNote);
 
   const windowRow = document.createElement("div");
@@ -1298,7 +1307,7 @@ function resetProtocolUiOnly() {
   if (signalDomainSelect) signalDomainSelect.value = "intensity";
   if (dpfWl1Input) dpfWl1Input.value = String(DEFAULT_DPF.wl1);
   if (dpfWl2Input) dpfWl2Input.value = String(DEFAULT_DPF.wl2);
-  filterStepEnabled = true;
+  filterStepEnabled = false;
   trimStepEnabled = true;
   amplitudePreservationMode = "none";
   if (filterStepCheckbox) filterStepCheckbox.checked = filterStepEnabled;
@@ -1357,15 +1366,18 @@ function redraw() {
   const domainLabel = signalDomain === "delta_od" ? "Delta OD" : "Intensity";
   const rawRangeLabel = formatWindowRangeLabel(rawWindowed.startSeconds, rawWindowed.series.length / samplingRate);
   if (rawPlotHeaderEl) rawPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Input (" + domainLabel + ", " + rawRangeLabel + ") | " + formatStats(computeStats(rawWindowed.series));
-  if (trimPlotHeaderEl) trimPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Output (" + filterLabel + (trimStepEnabled ? ", trim on" : ", trim off") + ")";
+  if (trimPlotHeaderEl) trimPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Trimmed";
+  if (filteredPlotHeaderEl) filteredPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Filtered (" + filterLabel + (trimStepEnabled ? ", trim on" : ", trim off") + ")";
   if (hboPlotHeaderEl) hboPlotHeaderEl.textContent = chLabel + " HbO";
   if (hbrPlotHeaderEl) hbrPlotHeaderEl.textContent = chLabel + " HbR";
 
   const stageSummaryVisible = !!(stageSummaryHost && stageSummaryHost.style.display !== "none");
-  const needsProcessedCurrent = currentPlotMode === "trimmed" || stageSummaryVisible;
+  const needsTrimmedCurrent = currentPlotMode === "trimmed";
+  const needsFilteredCurrent = currentPlotMode === "filtered" || stageSummaryVisible;
   const needsHemoglobin = currentPlotMode === "hbo" || currentPlotMode === "hbr" || stageSummaryVisible;
   let trimmedEvents = null;
-  let processedWindowed = null;
+  let trimmedWindowed = null;
+  let filteredWindowed = null;
   let hbWindowed = null;
   let stageSummaryModel = null;
 
@@ -1386,36 +1398,64 @@ function redraw() {
     );
   }
 
-  if (needsProcessedCurrent || needsHemoglobin) {
+  if (needsTrimmedCurrent || needsFilteredCurrent || needsHemoglobin) {
     trimmedEvents = trimStepEnabled
       ? adjustEvents(events, intervals)
       : rawEvents.map(e => ({ time: e.time, code: e.code, label: e.label }));
   }
 
-  if (needsProcessedCurrent) {
-    const filtered = applyConfiguredFilter(raw, activeFilterSpec, filterEngine, dcRestore);
-    const processed = trimStepEnabled ? applyExclusions(filtered, intervals) : filtered.slice();
-    const processedDisplay = getDisplayWindow(processed, trimmedEvents, null, samplingRate, activeFilterSpec);
-    processedWindowed = sliceDisplayByTimeWindow(processedDisplay, samplingRate, rawWindowed.startSeconds, requestedWindow);
+  if (needsTrimmedCurrent) {
+    const trimmed = trimStepEnabled ? applyExclusions(raw, intervals) : raw.slice();
+    const trimmedDisplay = getDisplayWindow(trimmed, trimmedEvents, null, samplingRate, null);
+    trimmedWindowed = sliceDisplayByTimeWindow(trimmedDisplay, samplingRate, rawWindowed.startSeconds, requestedWindow);
 
     if (trimPlotHeaderEl) {
-      const processedRangeLabel = formatWindowRangeLabel(processedWindowed.startSeconds, processedWindowed.series.length / samplingRate);
-      trimPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Output (" + filterLabel + (trimStepEnabled ? ", trim on" : ", trim off") + ", " + processedRangeLabel + ") | " + formatStats(computeStats(processedWindowed.series));
+      const trimmedRangeLabel = formatWindowRangeLabel(trimmedWindowed.startSeconds, trimmedWindowed.series.length / samplingRate);
+      trimPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Trimmed (" + (trimStepEnabled ? "trim on" : "trim off") + ", " + trimmedRangeLabel + ") | " + formatStats(computeStats(trimmedWindowed.series));
     }
   }
 
-  if (currentPlotMode === "trimmed" && processedWindowed) {
+  if (needsFilteredCurrent) {
+    const filtered = applyConfiguredFilter(raw, activeFilterSpec, filterEngine, dcRestore);
+    const filteredThenTrimmed = trimStepEnabled ? applyExclusions(filtered, intervals) : filtered.slice();
+    const filteredDisplay = getDisplayWindow(filteredThenTrimmed, trimmedEvents, null, samplingRate, activeFilterSpec);
+    filteredWindowed = sliceDisplayByTimeWindow(filteredDisplay, samplingRate, rawWindowed.startSeconds, requestedWindow);
+
+    if (filteredPlotHeaderEl) {
+      const filteredRangeLabel = formatWindowRangeLabel(filteredWindowed.startSeconds, filteredWindowed.series.length / samplingRate);
+      filteredPlotHeaderEl.textContent = wlLabel + " " + chLabel + " Filtered (" + filterLabel + (trimStepEnabled ? ", trim on" : ", trim off") + ", " + filteredRangeLabel + ") | " + formatStats(computeStats(filteredWindowed.series));
+    }
+  }
+
+  if (currentPlotMode === "trimmed" && trimmedWindowed) {
     drawPlot(
       ctxTrim,
       canvasTrim,
-      processedWindowed.series,
+      trimmedWindowed.series,
       samplingRate,
-      processedWindowed.intervals,
-      processedWindowed.events,
-      wlLabel + " " + chLabel + " Output (" + filterLabel + ")",
-      formatStats(computeStats(processedWindowed.series)),
+      trimmedWindowed.intervals,
+      trimmedWindowed.events,
+      wlLabel + " " + chLabel + " Trimmed",
+      formatStats(computeStats(trimmedWindowed.series)),
       {
-        timeOffsetSeconds: processedWindowed.startSeconds,
+        timeOffsetSeconds: trimmedWindowed.startSeconds,
+        yLabel: signalDomain === "delta_od" ? "Delta OD" : "Intensity (a.u.)"
+      }
+    );
+  }
+
+  if (currentPlotMode === "filtered" && filteredWindowed) {
+    drawPlot(
+      ctxFiltered,
+      canvasFiltered,
+      filteredWindowed.series,
+      samplingRate,
+      filteredWindowed.intervals,
+      filteredWindowed.events,
+      wlLabel + " " + chLabel + " Filtered (" + filterLabel + ")",
+      formatStats(computeStats(filteredWindowed.series)),
+      {
+        timeOffsetSeconds: filteredWindowed.startSeconds,
         yLabel: signalDomain === "delta_od" ? "Delta OD" : "Intensity (a.u.)"
       }
     );
@@ -1527,6 +1567,7 @@ function redraw() {
   }
 
   if (currentPlotMode !== "trimmed") ctxTrim.clearRect(0, 0, canvasTrim.width, canvasTrim.height);
+  if (currentPlotMode !== "filtered") ctxFiltered.clearRect(0, 0, canvasFiltered.width, canvasFiltered.height);
   if (currentPlotMode !== "hbo") ctxHbO.clearRect(0, 0, canvasHbO.width, canvasHbO.height);
   if (currentPlotMode !== "hbr") ctxHbR.clearRect(0, 0, canvasHbR.width, canvasHbR.height);
 
@@ -1534,7 +1575,7 @@ function redraw() {
   debugLog("redraw:end", {
     elapsedMs: Number((performance.now() - redrawStartMs).toFixed(1)),
     rawSamples: rawWindowed.series.length,
-    processedSamples: processedWindowed ? processedWindowed.series.length : 0,
+    processedSamples: filteredWindowed ? filteredWindowed.series.length : 0,
     plotMode: currentPlotMode,
     hbAvailable: !!(hbWindowed && ((hbWindowed.hbo && hbWindowed.hbo.series.length) || (hbWindowed.hbr && hbWindowed.hbr.series.length)))
   });
@@ -2404,6 +2445,7 @@ function initPlotLayout() {
   const tabs = [
     { value: "raw", label: "Raw" },
     { value: "trimmed", label: "Trimmed" },
+    { value: "filtered", label: "Filtered" },
     { value: "hbo", label: "HbO" },
     { value: "hbr", label: "HbR" }
   ];
@@ -2437,6 +2479,14 @@ function initPlotLayout() {
   trimPanel.appendChild(trimPlotHeaderEl);
   trimPanel.appendChild(canvasTrim);
 
+  const filteredPanel = document.createElement("div");
+  filteredPanel.className = "plot-panel";
+  filteredPlotHeaderEl = document.createElement("div");
+  filteredPlotHeaderEl.className = "plot-header";
+  filteredPlotHeaderEl.textContent = "Filtered";
+  filteredPanel.appendChild(filteredPlotHeaderEl);
+  filteredPanel.appendChild(canvasFiltered);
+
   const hboPanel = document.createElement("div");
   hboPanel.className = "plot-panel";
   hboPlotHeaderEl = document.createElement("div");
@@ -2455,6 +2505,7 @@ function initPlotLayout() {
 
   rawPanelEl = rawPanel;
   trimPanelEl = trimPanel;
+  filteredPanelEl = filteredPanel;
   hboPanelEl = hboPanel;
   hbrPanelEl = hbrPanel;
   plotScrollerEl = createPlotScroller();
@@ -2463,6 +2514,7 @@ function initPlotLayout() {
   plotGrid.appendChild(plotTabBarEl);
   plotGrid.appendChild(rawPanel);
   plotGrid.appendChild(trimPanel);
+  plotGrid.appendChild(filteredPanel);
   plotGrid.appendChild(hboPanel);
   plotGrid.appendChild(hbrPanel);
   if (plotScrollerHost) {
@@ -2745,10 +2797,11 @@ function getFilterEngine() {
 }
 
 function applyPlotMode() {
-  if (!rawPanelEl || !trimPanelEl || !hboPanelEl || !hbrPanelEl || !plotGrid) return;
+  if (!rawPanelEl || !trimPanelEl || !filteredPanelEl || !hboPanelEl || !hbrPanelEl || !plotGrid) return;
   const panels = [
     { mode: "raw", el: rawPanelEl },
     { mode: "trimmed", el: trimPanelEl },
+    { mode: "filtered", el: filteredPanelEl },
     { mode: "hbo", el: hboPanelEl },
     { mode: "hbr", el: hbrPanelEl }
   ];
