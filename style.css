@@ -71,6 +71,11 @@ canvas {
   cursor: pointer;
 }
 
+.choice-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .choice-btn.active {
   border-color: #0284c7;
   background: #e0f2fe;
@@ -80,6 +85,13 @@ canvas {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.plot-mode-note {
+  display: none;
+  font-size: 0.77rem;
+  line-height: 1.4;
+  color: #475569;
 }
 
 .wl-choice-btn {
@@ -272,14 +284,29 @@ body { overflow: hidden; }
   border-right: 8px solid #cbd5e1;
 }
 
-#plotGrid canvas {
-  background: #ffffff !important;
+.plot-chart-host {
+  width: 100%;
+  min-height: 320px;
+}
+
+.plot-chart-host > .uplot {
+  width: 100%;
   border: 1px solid #cbd5e1;
   border-right: 4px solid #94a3b8;
-  width: 100%;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.plot-chart-host .u-wrap canvas {
+  width: auto;
   height: auto;
-  max-height: calc(100vh - 250px);
-  object-fit: contain;
+  border-radius: 0;
+}
+
+.plot-chart-host .u-axis,
+.plot-chart-host .u-label {
+  color: #0f172a;
 }
 
 .plot-tab-bar {
@@ -449,6 +476,10 @@ body.theme-dark .choice-btn {
   border-color: #334155;
 }
 
+body.theme-dark .choice-btn:disabled {
+  opacity: 0.5;
+}
+
 body.theme-dark .choice-btn.active {
   background: #0c4a6e;
   border-color: #38bdf8;
@@ -475,6 +506,10 @@ body.theme-dark .filter-toggle-btn.inactive {
 
 body.theme-dark .plot-header {
   color: #e2e8f0;
+}
+
+body.theme-dark .plot-mode-note {
+  color: #94a3b8;
 }
 
 body.theme-dark .plot-scroller {
@@ -509,4 +544,9 @@ body.theme-dark .debug-log-panel {
 
 body.theme-dark canvas {
   background: #ffffff !important;
+}
+
+body.theme-dark .plot-chart-host > .uplot {
+  border-color: #334155;
+  border-right-color: #475569;
 }

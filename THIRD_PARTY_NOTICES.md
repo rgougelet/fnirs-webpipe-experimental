@@ -41,6 +41,25 @@ This file tracks nontrivial third-party code adaptations/reuse.
 
 ---
 
+### uPlot
+- Source: `https://github.com/leeoniya/uPlot` and local install snapshot `node_modules/uplot`
+- Version: `1.6.32`
+- License: `MIT`
+- Usage mode: `direct_reuse`
+- Files in this repo:
+  - `vendor/uPlot.iife.js`
+  - `vendor/uPlot.min.css`
+  - `vendor/uPlot.LICENSE.txt`
+- Summary of reused/adapted parts:
+  - Unmodified browser distribution files for interactive time-series plotting in the portable app
+- Modifications made:
+  - None; copied verbatim into `vendor/`
+- Required notices:
+  - Keep `vendor/uPlot.LICENSE.txt` with the vendored files
+  - Keep this notice entry
+
+---
+
 ### Homer3 MBLL/OD reference methods
 - Source: `references/unpacked/BUNPC-Homer3-1.87.0.0`
 - Version: `BUNPC-Homer3-1.87.0.0` ZIP snapshot imported on 2026-03-06

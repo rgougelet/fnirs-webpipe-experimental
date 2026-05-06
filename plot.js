@@ -1,320 +1,381 @@
-function drawPlot(ctx, canvas, series, samplingRate, overlays, events, title, statsLine, options = {}) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const timeOffsetSeconds = options && Number.isFinite(options.timeOffsetSeconds) ? options.timeOffsetSeconds : 0;
-  const seriesList = normalizeSeriesList(series, options);
-  const extent = getSeriesCollectionExtent(seriesList);
+(function () {
+  const DEFAULT_LINE_COLOR = "#0f172a";
+  const DEFAULT_HEIGHT = 430;
+  const MIN_HEIGHT = 320;
+  const MAX_HEIGHT = 520;
+  const MIN_WIDTH = 320;
 
-  drawGrid(ctx, canvas);
-  drawAxes(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds, extent);
-  drawSeries(ctx, canvas, seriesList, extent);
+  function createPlotController(host, options = {}) {
+    const controller = {
+      host,
+      options,
+      chart: null,
+      currentModel: null,
+      chartSignature: "",
+      cleanupFns: [],
+      resizeObserver: null,
+      suppressViewChange: false
+    };
 
-  if (overlays && overlays.length) {
-    drawOverlays(ctx, canvas, overlays, series.length, samplingRate);
-  }
-
-  if (events && events.length) {
-    drawEvents(ctx, canvas, events, series.length, samplingRate);
-  }
-
-  drawLabels(ctx, canvas, options && options.yLabel ? options.yLabel : "Intensity (a.u.)");
-  if (seriesList.length > 1) drawLegend(ctx, canvas, seriesList);
-}
-
-function normalizeSeriesList(series, options) {
-  if (options && Array.isArray(options.seriesList) && options.seriesList.length) {
-    return options.seriesList
-      .map(item => ({
-        label: item && item.label ? String(item.label) : "",
-        color: item && item.color ? String(item.color) : "#0f172a",
-        data: isSeriesLike(item && item.data) ? Array.from(item.data) : []
-      }))
-      .filter(item => item.data.length);
-  }
-  return [{
-    label: "",
-    color: "#0f172a",
-    data: isSeriesLike(series) ? Array.from(series) : []
-  }];
-}
-
-function drawGrid(ctx, canvas) {
-  const w = canvas.width - M.left - M.right;
-  const h = canvas.height - M.top - M.bottom;
-
-  ctx.strokeStyle = "#d1d5db";
-  ctx.lineWidth = 1.2;
-
-  for (let i = 0; i <= 10; i++) {
-    const x = M.left + (i / 10) * w;
-    ctx.beginPath();
-    ctx.moveTo(x, M.top);
-    ctx.lineTo(x, M.top + h);
-    ctx.stroke();
-  }
-
-  for (let i = 0; i <= 6; i++) {
-    const y = M.top + (i / 6) * h;
-    ctx.beginPath();
-    ctx.moveTo(M.left, y);
-    ctx.lineTo(M.left + w, y);
-    ctx.stroke();
-  }
-}
-
-function drawAxes(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds, extent) {
-  const w = canvas.width - M.left - M.right;
-  const h = canvas.height - M.top - M.bottom;
-
-  ctx.strokeStyle = "#111827";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(M.left, M.top);
-  ctx.lineTo(M.left, M.top + h);
-  ctx.lineTo(M.left + w, M.top + h);
-  ctx.stroke();
-
-  drawTicks(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds, extent);
-}
-
-function drawTicks(ctx, canvas, seriesList, samplingRate, timeOffsetSeconds, extent) {
-  const w = canvas.width - M.left - M.right;
-  const h = canvas.height - M.top - M.bottom;
-  const primary = Array.isArray(seriesList) && seriesList.length ? seriesList[0].data : [];
-  const dur = primary.length / samplingRate;
-  const minY = extent.min;
-  const maxY = extent.max;
-  const yRange = maxY - minY;
-  const yTickCount = getYTickCount(minY, maxY);
-  const xTickCount = getXTickCount(canvas.width);
-
-  ctx.font = "18px sans-serif";
-  ctx.fillStyle = "#111827";
-  ctx.textBaseline = "top";
-
-  for (let i = 0; i <= xTickCount; i++) {
-    const x = M.left + (i / xTickCount) * w;
-    const tx = (timeOffsetSeconds + (dur * i / xTickCount)).toFixed(1);
-    if (i === 0) ctx.textAlign = "left";
-    else if (i === xTickCount) ctx.textAlign = "right";
-    else ctx.textAlign = "center";
-    ctx.fillText(tx, x, M.top + h + 8);
-  }
-
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  for (let i = 0; i <= yTickCount; i++) {
-    const y = M.top + h - (i / yTickCount) * h;
-    const v = yRange === 0 ? minY : (minY + (i / yTickCount) * yRange);
-    ctx.fillText(formatAxisNumber(v, yRange), M.left - 10, y);
-  }
-}
-
-function drawSeries(ctx, canvas, seriesList, extent) {
-  const w = canvas.width - M.left - M.right;
-  const h = canvas.height - M.top - M.bottom;
-  const minY = extent.min;
-  const maxY = extent.max;
-  const span = maxY - minY || 1;
-
-  seriesList.forEach(item => {
-    const series = item.data;
-    if (!series.length) return;
-    ctx.strokeStyle = item.color || "#0f172a";
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    if (series.length === 1) {
-      const y = M.top + h - ((series[0] - minY) / span) * h;
-      ctx.moveTo(M.left, y);
-      ctx.lineTo(M.left + w, y);
-    } else {
-      series.forEach((v, i) => {
-        const x = M.left + (i / (series.length - 1)) * w;
-        const y = M.top + h - ((v - minY) / span) * h;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+    if (typeof ResizeObserver !== "undefined" && host) {
+      controller.resizeObserver = new ResizeObserver(() => {
+        if (!controller.chart) return;
+        controller.chart.setSize(getPlotSize(controller.host));
       });
+      controller.resizeObserver.observe(host);
     }
-    ctx.stroke();
-  });
-}
 
-function drawOverlays(ctx, canvas, intervals, nSamples, samplingRate) {
-  const w = canvas.width - M.left - M.right;
-  const h = canvas.height - M.top - M.bottom;
-  const dur = nSamples / samplingRate;
-
-  ctx.fillStyle = "rgba(203,213,225,0.6)";
-
-  intervals.forEach(intv => {
-    const x1 = M.left + (intv.start / dur) * w;
-    const x2 = M.left + (intv.end / dur) * w;
-    ctx.fillRect(x1, M.top, x2 - x1, h);
-  });
-}
-
-function drawEvents(ctx, canvas, events, nSamples, samplingRate) {
-  const w = canvas.width - M.left - M.right;
-  const h = canvas.height - M.top - M.bottom;
-  const dur = nSamples / samplingRate;
-
-  ctx.strokeStyle = "#dc2626";
-  ctx.fillStyle = "#dc2626";
-  ctx.lineWidth = 1.4;
-  ctx.font = "16px sans-serif";
-
-  events.forEach(e => {
-    const x = M.left + (e.time / dur) * w;
-
-    ctx.beginPath();
-    ctx.moveTo(x, M.top);
-    ctx.lineTo(x, M.top + h);
-    ctx.stroke();
-
-    ctx.fillText(
-      eventDisplayLabel(e),
-      x + 4,
-      M.top + 14
-    );
-  });
-}
-
-function getSeriesExtent(series) {
-  if (!series || !series.length) return { min: 0, max: 0 };
-  let min = series[0];
-  let max = series[0];
-  for (let i = 1; i < series.length; i++) {
-    const value = series[i];
-    if (value < min) min = value;
-    if (value > max) max = value;
+    controller.setModel = model => setPlotModel(controller, model);
+    controller.clear = () => clearPlotController(controller);
+    controller.destroy = () => destroyPlotController(controller);
+    return controller;
   }
-  return { min, max };
-}
 
-function isSeriesLike(series) {
-  return Array.isArray(series) || ArrayBuffer.isView(series);
-}
+  function destroyPlotController(controller) {
+    clearPlotController(controller);
+    if (controller && controller.resizeObserver) {
+      controller.resizeObserver.disconnect();
+      controller.resizeObserver = null;
+    }
+  }
 
-function getSeriesCollectionExtent(seriesList) {
-  let hasData = false;
-  let min = 0;
-  let max = 0;
+  function clearPlotController(controller) {
+    if (!controller) return;
+    controller.currentModel = null;
+    controller.chartSignature = "";
+    controller.cleanupFns.forEach(fn => {
+      try { fn(); } catch (e) {}
+    });
+    controller.cleanupFns = [];
+    if (controller.chart) {
+      controller.chart.destroy();
+      controller.chart = null;
+    }
+    if (controller.host) controller.host.textContent = "";
+  }
 
-  (Array.isArray(seriesList) ? seriesList : []).forEach(item => {
-    if (!item || !Array.isArray(item.data) || !item.data.length) return;
-    const extent = getSeriesExtent(item.data);
-    if (!hasData) {
-      min = extent.min;
-      max = extent.max;
-      hasData = true;
+  function setPlotModel(controller, model) {
+    if (!controller || !controller.host) return;
+    const normalized = normalizePlotModel(model);
+    if (!normalized) {
+      clearPlotController(controller);
       return;
     }
-    if (extent.min < min) min = extent.min;
-    if (extent.max > max) max = extent.max;
-  });
 
-  return hasData ? { min, max } : { min: 0, max: 0 };
-}
+    controller.currentModel = normalized;
+    const signature = buildSignature(normalized);
 
-function eventDisplayLabel(event) {
-  if (event && typeof event.label === "string" && event.label.trim()) return event.label.trim();
-  if (event && Number.isFinite(event.code)) return "E" + event.code;
-  return "E?";
-}
-
-function drawLabels(ctx, canvas, yLabel) {
-  ctx.fillStyle = "#111827";
-  ctx.font = "20px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText("Time (s)", canvas.width / 2, canvas.height - 6);
-
-  ctx.save();
-  ctx.translate(M.left - 50, canvas.height / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText(yLabel || "Intensity (a.u.)", 0, 0);
-  ctx.restore();
-}
-
-function drawLegend(ctx, canvas, seriesList) {
-  const entries = seriesList.filter(item => item && item.label);
-  if (!entries.length) return;
-
-  const boxWidth = 146;
-  const boxHeight = 20 + entries.length * 22;
-  const x = canvas.width - M.right - boxWidth;
-  const y = M.top + 8;
-
-  ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.strokeStyle = "#cbd5e1";
-  ctx.lineWidth = 1;
-  ctx.fillRect(x, y, boxWidth, boxHeight);
-  ctx.strokeRect(x, y, boxWidth, boxHeight);
-  ctx.font = "15px sans-serif";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-
-  entries.forEach((item, idx) => {
-    const rowY = y + 20 + idx * 22;
-    ctx.strokeStyle = item.color || "#0f172a";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x + 8, rowY);
-    ctx.lineTo(x + 24, rowY);
-    ctx.stroke();
-    ctx.fillStyle = "#111827";
-    ctx.fillText(item.label, x + 30, rowY);
-  });
-  ctx.restore();
-}
-
-function formatAxisNumber(v, span) {
-  if (!Number.isFinite(v)) return "NaN";
-  if (v === 0) return "0.00";
-  const abs = Math.abs(v);
-  if (abs < 0.005 || abs >= 1000) return v.toExponential(2);
-  if (span < 0.01) return v.toExponential(2);
-  if (abs >= 100) return v.toFixed(1);
-  if (abs >= 10) return v.toFixed(2);
-  if (span < 0.1) return v.toFixed(4);
-  if (span < 1) return v.toFixed(3);
-  return v.toFixed(2);
-}
-
-function getXTickCount(canvasWidth) {
-  if (canvasWidth < 700) return 6;
-  if (canvasWidth < 1000) return 8;
-  return 10;
-}
-
-function getYTickCount(minY, maxY) {
-  const maxAbs = Math.max(Math.abs(minY), Math.abs(maxY));
-  if (maxAbs < 0.01 || maxAbs >= 1000) return 4;
-  return 6;
-}
-
-
-function computeStats(series) {
-  if (!isSeriesLike(series) || !series.length) {
-    return { mean: 0, median: 0, sd: 0, min: 0, max: 0 };
+    if (!controller.chart || controller.chartSignature !== signature) {
+      recreateChart(controller, normalized, signature);
+    } else {
+      controller.suppressViewChange = true;
+      controller.chart.setData([normalized.xData, normalized.yData], false);
+      controller.chart.axes[1].label = normalized.yLabel;
+      controller.chart.series[1].stroke = normalized.stroke;
+      controller.chart.redraw();
+      applyViewRange(controller, normalized.viewMin, normalized.viewMax);
+      controller.suppressViewChange = false;
+    }
   }
-  const sorted = Array.from(series).sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
 
-  const median = sorted.length % 2
-    ? sorted[mid]
-    : (sorted[mid - 1] + sorted[mid]) / 2;
+  function recreateChart(controller, model, signature) {
+    clearPlotController(controller);
+    controller.currentModel = model;
+    controller.chartSignature = signature;
 
-  const mean = series.reduce((a, b) => a + b, 0) / series.length;
-  const sd = Math.sqrt(series.reduce((s, v) => s + (v - mean) ** 2, 0) / series.length);
+    const plugins = [
+      createAnnotationPlugin(controller),
+      createWheelPlugin(controller)
+    ];
 
-  return {
-    mean,
-    median,
-    sd,
-    min: sorted[0],
-    max: sorted[sorted.length - 1]
+    const opts = {
+      width: getPlotSize(controller.host).width,
+      height: getPlotSize(controller.host).height,
+      padding: [10, 12, 6, 8],
+      legend: { show: false },
+      select: { show: true },
+      cursor: {
+        drag: { x: true, y: false, setScale: true },
+        focus: { prox: -1 },
+        points: { show: false }
+      },
+      scales: {
+        x: { time: false },
+        y: { auto: true }
+      },
+      axes: [
+        {
+          scale: "x",
+          side: 2,
+          size: 56,
+          gap: 8,
+          label: "Time (s)",
+          labelSize: 24,
+          labelGap: 10,
+          font: "13px sans-serif",
+          labelFont: "600 13px sans-serif",
+          stroke: "#0f172a",
+          space: 72,
+          values: (_u, splits) => splits.map(v => formatTimeSeconds(v)),
+          grid: { stroke: "#dbe4ef", width: 1 },
+          ticks: { stroke: "#94a3b8", width: 1, size: 6 },
+          border: { stroke: "#0f172a", width: 1.2 }
+        },
+        {
+          scale: "y",
+          side: 3,
+          size: 104,
+          gap: 10,
+          label: model.yLabel,
+          labelSize: 34,
+          labelGap: 10,
+          font: "13px sans-serif",
+          labelFont: "600 13px sans-serif",
+          stroke: "#0f172a",
+          space: 52,
+          values: (u, splits) => {
+            const min = Number.isFinite(u.scales.y.min) ? u.scales.y.min : 0;
+            const max = Number.isFinite(u.scales.y.max) ? u.scales.y.max : min;
+            return splits.map(v => formatAxisNumber(v, max - min));
+          },
+          grid: { stroke: "#e2e8f0", width: 1 },
+          ticks: { stroke: "#94a3b8", width: 1, size: 6 },
+          border: { stroke: "#0f172a", width: 1.2 }
+        }
+      ],
+      series: [
+        {},
+        {
+          stroke: model.stroke,
+          width: 2
+        }
+      ],
+      hooks: {
+        setScale: [u => {
+          if (controller.suppressViewChange || !controller.currentModel || !controller.options || typeof controller.options.onViewChange !== "function") return;
+          if (!Number.isFinite(u.scales.x.min) || !Number.isFinite(u.scales.x.max)) return;
+          controller.options.onViewChange({
+            startSeconds: u.scales.x.min,
+            endSeconds: u.scales.x.max,
+            windowSeconds: u.scales.x.max - u.scales.x.min,
+            durationSeconds: controller.currentModel.domainMax - controller.currentModel.domainMin
+          });
+        }]
+      },
+      plugins
+    };
+
+    controller.chart = new uPlot(opts, [model.xData, model.yData], controller.host);
+    applyViewRange(controller, model.viewMin, model.viewMax);
+  }
+
+  function createAnnotationPlugin(controller) {
+    return {
+      hooks: {
+        draw: [u => {
+          const model = controller.currentModel;
+          if (!model) return;
+          const ctx = u.ctx;
+          const left = u.bbox.left;
+          const top = u.bbox.top;
+          const width = u.bbox.width;
+          const height = u.bbox.height;
+          const xMin = u.scales.x.min;
+          const xMax = u.scales.x.max;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(left, top, width, height);
+          ctx.clip();
+
+          if (Array.isArray(model.overlays)) {
+            ctx.fillStyle = "rgba(148,163,184,0.18)";
+            model.overlays.forEach(intv => {
+              if (!intv || !Number.isFinite(intv.start) || !Number.isFinite(intv.end)) return;
+              if (intv.end < xMin || intv.start > xMax) return;
+              const x1 = left + u.valToPos(intv.start, "x");
+              const x2 = left + u.valToPos(intv.end, "x");
+              ctx.fillRect(x1, top, Math.max(1, x2 - x1), height);
+            });
+          }
+
+          if (Array.isArray(model.events)) {
+            ctx.strokeStyle = "#dc2626";
+            ctx.fillStyle = "#b91c1c";
+            ctx.lineWidth = 1.15;
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            let lastLabelX = -Infinity;
+
+            model.events.forEach(event => {
+              if (!event || !Number.isFinite(event.time)) return;
+              if (event.time < xMin || event.time > xMax) return;
+              const x = left + u.valToPos(event.time, "x");
+              ctx.beginPath();
+              ctx.moveTo(x, top);
+              ctx.lineTo(x, top + height);
+              ctx.stroke();
+
+              if (x - lastLabelX >= 36) {
+                ctx.fillText(eventDisplayLabel(event), x + 4, top + 6);
+                lastLabelX = x;
+              }
+            });
+          }
+
+          ctx.restore();
+        }]
+      }
+    };
+  }
+
+  function createWheelPlugin(controller) {
+    return {
+      hooks: {
+        ready: [u => {
+          const onWheel = event => {
+            const model = controller.currentModel;
+            if (!model) return;
+            event.preventDefault();
+
+            const xMin = Number.isFinite(u.scales.x.min) ? u.scales.x.min : model.viewMin;
+            const xMax = Number.isFinite(u.scales.x.max) ? u.scales.x.max : model.viewMax;
+            const currentRange = xMax - xMin;
+            if (!Number.isFinite(currentRange) || currentRange <= 0) return;
+
+            if (event.shiftKey) {
+              const shift = currentRange * 0.12 * Math.sign(event.deltaY || event.deltaX || 0);
+              const clamped = clampRange(xMin + shift, xMax + shift, model.domainMin, model.domainMax);
+              applyViewRange(controller, clamped.min, clamped.max);
+              return;
+            }
+
+            const rect = u.over.getBoundingClientRect();
+            const cursorLeft = event.clientX - rect.left;
+            const focusX = u.posToVal(cursorLeft, "x");
+            const zoomFactor = event.deltaY < 0 ? 0.85 : 1.15;
+            const nextRange = clampNumber(
+              currentRange * zoomFactor,
+              model.minWindowSeconds,
+              model.domainMax - model.domainMin
+            );
+
+            const focusRatio = currentRange <= 0 ? 0.5 : (focusX - xMin) / currentRange;
+            let nextMin = focusX - nextRange * focusRatio;
+            let nextMax = nextMin + nextRange;
+            const clamped = clampRange(nextMin, nextMax, model.domainMin, model.domainMax);
+            applyViewRange(controller, clamped.min, clamped.max);
+          };
+
+          u.over.addEventListener("wheel", onWheel, { passive: false });
+          controller.cleanupFns.push(() => u.over.removeEventListener("wheel", onWheel));
+        }]
+      }
+    };
+  }
+
+  function applyViewRange(controller, min, max) {
+    if (!controller || !controller.chart || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) return;
+    controller.suppressViewChange = true;
+    controller.chart.batch(() => {
+      controller.chart.setScale("x", { min, max });
+    });
+    controller.suppressViewChange = false;
+  }
+
+  function normalizePlotModel(model) {
+    if (!model || !Array.isArray(model.yData) || !model.yData.length || !Number.isFinite(model.samplingRate) || model.samplingRate <= 0) {
+      return null;
+    }
+
+    const startSeconds = Number.isFinite(model.startSeconds) ? model.startSeconds : 0;
+    const domainMin = Number.isFinite(model.domainMin) ? model.domainMin : 0;
+    const domainMax = Number.isFinite(model.domainMax) ? model.domainMax : (domainMin + model.yData.length / model.samplingRate);
+    const xData = Array.from({ length: model.yData.length }, (_, idx) => startSeconds + idx / model.samplingRate);
+    const fullSpan = Math.max(1 / model.samplingRate, domainMax - domainMin);
+    const viewMin = Number.isFinite(model.viewMin) ? model.viewMin : startSeconds;
+    const viewMax = Number.isFinite(model.viewMax) ? model.viewMax : (startSeconds + model.yData.length / model.samplingRate);
+
+    return {
+      yData: model.yData.slice(),
+      xData,
+      yLabel: model.yLabel || "Signal",
+      stroke: model.stroke || DEFAULT_LINE_COLOR,
+      events: Array.isArray(model.events) ? model.events.slice() : [],
+      overlays: Array.isArray(model.overlays) ? model.overlays.slice() : [],
+      domainMin,
+      domainMax,
+      viewMin,
+      viewMax,
+      minWindowSeconds: Math.max(1 / model.samplingRate, Math.min(fullSpan, Number.isFinite(model.minWindowSeconds) ? model.minWindowSeconds : (8 / model.samplingRate))),
+      samplingRate: model.samplingRate
+    };
+  }
+
+  function buildSignature(model) {
+    return [
+      model.yLabel,
+      model.stroke
+    ].join("|");
+  }
+
+  function getPlotSize(host) {
+    const width = Math.max(MIN_WIDTH, Math.round(host && host.clientWidth ? host.clientWidth : 900));
+    const height = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(width * 0.4), DEFAULT_HEIGHT));
+    return { width, height };
+  }
+
+  function clampRange(min, max, domainMin, domainMax) {
+    const span = max - min;
+    if (!Number.isFinite(span) || span <= 0) {
+      return { min: domainMin, max: domainMax };
+    }
+    if (span >= (domainMax - domainMin)) {
+      return { min: domainMin, max: domainMax };
+    }
+    let nextMin = min;
+    let nextMax = max;
+    if (nextMin < domainMin) {
+      nextMax += (domainMin - nextMin);
+      nextMin = domainMin;
+    }
+    if (nextMax > domainMax) {
+      nextMin -= (nextMax - domainMax);
+      nextMax = domainMax;
+    }
+    return { min: nextMin, max: nextMax };
+  }
+
+  function clampNumber(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function formatTimeSeconds(value) {
+    return Number.isFinite(value) ? value.toFixed(1) : "";
+  }
+
+  function formatAxisNumber(value, span) {
+    if (!Number.isFinite(value)) return "";
+    if (value === 0) return "0.00";
+    const abs = Math.abs(value);
+    if (abs < 0.005 || abs >= 1000) return value.toExponential(2);
+    if (span < 0.01) return value.toExponential(2);
+    if (abs >= 100) return value.toFixed(1);
+    if (abs >= 10) return value.toFixed(2);
+    if (span < 0.1) return value.toFixed(4);
+    if (span < 1) return value.toFixed(3);
+    return value.toFixed(2);
+  }
+
+  function eventDisplayLabel(event) {
+    if (event && typeof event.label === "string" && event.label.trim()) return event.label.trim();
+    if (event && Number.isFinite(event.code)) return "E" + event.code;
+    return "E?";
+  }
+
+  window.fnirsPlot = {
+    createPlotController,
+    destroyPlotController
   };
-}
+})();
