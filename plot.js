@@ -88,8 +88,7 @@
     const compact = plotSize.width < 900;
 
     const plugins = [
-      createAnnotationPlugin(controller),
-      createWheelPlugin(controller)
+      createAnnotationPlugin(controller)
     ];
 
     const opts = {
@@ -97,9 +96,9 @@
       height: plotSize.height,
       padding: [10, 12, 6, 8],
       legend: { show: false },
-      select: { show: true },
+      select: { show: false },
       cursor: {
-        drag: { x: true, y: false, setScale: true },
+        drag: { x: false, y: false, setScale: false },
         focus: { prox: -1 },
         points: { show: false }
       },
@@ -229,51 +228,6 @@
           }
 
           ctx.restore();
-        }]
-      }
-    };
-  }
-
-  function createWheelPlugin(controller) {
-    return {
-      hooks: {
-        ready: [u => {
-          const onWheel = event => {
-            const model = controller.currentModel;
-            if (!model) return;
-            event.preventDefault();
-
-            const xMin = Number.isFinite(u.scales.x.min) ? u.scales.x.min : model.viewMin;
-            const xMax = Number.isFinite(u.scales.x.max) ? u.scales.x.max : model.viewMax;
-            const currentRange = xMax - xMin;
-            if (!Number.isFinite(currentRange) || currentRange <= 0) return;
-
-            if (event.shiftKey) {
-              const shift = currentRange * 0.12 * Math.sign(event.deltaY || event.deltaX || 0);
-              const clamped = clampRange(xMin + shift, xMax + shift, model.domainMin, model.domainMax);
-              applyViewRange(controller, clamped.min, clamped.max);
-              return;
-            }
-
-            const rect = u.over.getBoundingClientRect();
-            const cursorLeft = event.clientX - rect.left;
-            const focusX = u.posToVal(cursorLeft, "x");
-            const zoomFactor = event.deltaY < 0 ? 0.85 : 1.15;
-            const nextRange = clampNumber(
-              currentRange * zoomFactor,
-              model.minWindowSeconds,
-              model.domainMax - model.domainMin
-            );
-
-            const focusRatio = currentRange <= 0 ? 0.5 : (focusX - xMin) / currentRange;
-            let nextMin = focusX - nextRange * focusRatio;
-            let nextMax = nextMin + nextRange;
-            const clamped = clampRange(nextMin, nextMax, model.domainMin, model.domainMax);
-            applyViewRange(controller, clamped.min, clamped.max);
-          };
-
-          u.over.addEventListener("wheel", onWheel, { passive: false });
-          controller.cleanupFns.push(() => u.over.removeEventListener("wheel", onWheel));
         }]
       }
     };
