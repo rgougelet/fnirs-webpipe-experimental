@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.10";
-const APP_LAST_UPDATED = "2026-05-08 09:41 EDT";
+const APP_VERSION = "0.3.11";
+const APP_LAST_UPDATED = "2026-05-08 09:46 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -710,6 +710,7 @@ function buildControls() {
     b.onclick = () => {
       currentWavelength = wl;
       rebuildRadioSelections();
+      if (plotController) plotController.clear();
       redraw();
       renderMeta();
     };
@@ -747,6 +748,7 @@ function buildControls() {
       b.onclick = () => {
         currentChannel = item.index;
         rebuildRadioSelections();
+        if (plotController) plotController.clear();
         redraw();
         renderMeta();
       };
@@ -1033,6 +1035,7 @@ function buildControls() {
   viewWindowSecondsInput.className = "p-2 border rounded bg-white w-full text-sm";
   viewWindowSecondsInput.title = "Visible time span in seconds. Larger than the record duration shows the full trace.";
   viewWindowSecondsInput.oninput = () => {
+    if (plotController) plotController.clear();
     updateViewNavigationUi(currentPlotDurationSeconds || getReferenceDurationSeconds());
     redraw();
   };
@@ -2506,6 +2509,7 @@ function createPlotScroller() {
   viewOffsetSlider.disabled = true;
   viewOffsetSlider.className = "plot-time-slider";
   viewOffsetSlider.oninput = () => {
+    if (plotController) plotController.clear();
     updateViewNavigationSummary(currentPlotDurationSeconds || getReferenceDurationSeconds());
     redraw();
   };
