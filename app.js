@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.23";
-const APP_LAST_UPDATED = "2026-05-08 14:08 EDT";
+const APP_VERSION = "0.3.24";
+const APP_LAST_UPDATED = "2026-05-08 14:14 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -313,6 +313,16 @@ async function handleInput(evt) {
     datasetLabel = stem(files[0].name);
     debugLog("handleInput:mode", { inputTypeLabel, datasetLabel });
     await loadZip(files[0]);
+  } else if (files.length === 1 && isSnirfFileName(files[0].name)) {
+    inputTypeLabel = "snirf";
+    datasetLabel = stem(files[0].name);
+    debugLog("handleInput:mode", { inputTypeLabel, datasetLabel });
+    showUnsupportedSnirfMessage(files[0].name);
+  } else if (files.length === 1 && isHomerNirsFileName(files[0].name)) {
+    inputTypeLabel = "homer-nirs";
+    datasetLabel = stem(files[0].name);
+    debugLog("handleInput:mode", { inputTypeLabel, datasetLabel });
+    showUnsupportedHomerNirsMessage(files[0].name);
   } else {
     inputTypeLabel = "files";
     const hdr = files.find(f => f.name.toLowerCase().endsWith(".hdr"));
@@ -320,6 +330,29 @@ async function handleInput(evt) {
     debugLog("handleInput:mode", { inputTypeLabel, datasetLabel });
     await loadFiles(files);
   }
+}
+
+function isSnirfFileName(name) {
+  return String(name || "").toLowerCase().endsWith(".snirf");
+}
+
+function isHomerNirsFileName(name) {
+  return String(name || "").toLowerCase().endsWith(".nirs");
+}
+
+function showUnsupportedSnirfMessage(name) {
+  metaDiv.textContent =
+    "SNIRF import is the next format target, but it is not wired in yet. " +
+    "The bundled Homer3 references use SnirfClass and HDF5-backed .snirf files, " +
+    "so the next implementation step is adding a browser HDF5 reader and mapping SNIRF measurement lists into this app's channel model. " +
+    "Selected file: " + name;
+}
+
+function showUnsupportedHomerNirsMessage(name) {
+  metaDiv.textContent =
+    "This Homer-style .nirs file is not the same as NIRx hdr/wl1/wl2 input. " +
+    "The bundled Homer3 sample .nirs files in the reference folder are MATLAB-format acquisition files, while Homer3's current canonical pipeline targets .snirf. " +
+    "Selected file: " + name;
 }
 
 function resetUiOnly() {
