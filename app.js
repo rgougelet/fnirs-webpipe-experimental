@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.21";
-const APP_LAST_UPDATED = "2026-05-08 11:56 EDT";
+const APP_VERSION = "0.3.22";
+const APP_LAST_UPDATED = "2026-05-08 13:52 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -1063,7 +1063,7 @@ function buildControls() {
   padRow.className = "grid grid-cols-[auto_auto_72px] gap-2 items-center";
   const padLbl = document.createElement("div");
   padLbl.className = "text-xs text-slate-600 font-semibold whitespace-nowrap";
-  padLbl.textContent = "Zero pad:";
+  padLbl.textContent = "Edge reflect:";
   edgePaddingCheckbox = document.createElement("input");
   edgePaddingCheckbox.type = "checkbox";
   edgePaddingCheckbox.className = "h-4 w-4 justify-self-start";
@@ -1072,14 +1072,14 @@ function buildControls() {
     updateFilterToggleButtons();
     requestUiRedraw({ meta: true });
   };
-  edgePaddingCheckbox.title = "Zero-pad before filtering. Uses at least 10 seconds on each side, adjusted by sampling rate.";
+  edgePaddingCheckbox.title = "Reflect the signal edges before forward-backward filtering. Uses at least 10 seconds on each side, adjusted by sampling rate.";
   edgePaddingSecondsInput = document.createElement("input");
   edgePaddingSecondsInput.type = "text";
   edgePaddingSecondsInput.inputMode = "decimal";
   edgePaddingSecondsInput.placeholder = String(MIN_EDGE_PADDING_SECONDS);
   edgePaddingSecondsInput.value = String(MIN_EDGE_PADDING_SECONDS);
   edgePaddingSecondsInput.className = "p-2 border rounded bg-white w-full";
-  edgePaddingSecondsInput.title = "Zero-padding duration in seconds on each side. Values below 10 seconds are raised to 10.";
+  edgePaddingSecondsInput.title = "Reflected edge extension in seconds on each side. Values below 10 seconds are raised to 10.";
   edgePaddingSecondsInput.oninput = () => {
     requestUiRedraw({ meta: true });
   };
@@ -1997,7 +1997,7 @@ function describeFilterSpec(spec) {
   } else if (lpPass !== null) {
     label = "LP [" + formatHz(lpPass) + " " + formatHz(lpSix) + "] Hz";
   }
-  if (padEnabled) label += " + pad zero " + formatHz(padSeconds) + " s";
+  if (padEnabled) label += " + edge reflect " + formatHz(padSeconds) + " s";
   return label;
 }
 
@@ -2694,7 +2694,7 @@ function getRequestedFilterSpec() {
     lowpassPassHz: filterStepEnabled && highCutEnabled ? lpPass : null,
     lowpassSixDbHz: filterStepEnabled && highCutEnabled ? lpSix : null,
     edgePaddingEnabled: filterRequested && !!(edgePaddingCheckbox && edgePaddingCheckbox.checked),
-    edgePaddingMode: "zero",
+    edgePaddingMode: "reflect",
     edgePaddingSeconds: numberOrNull(edgePaddingSecondsInput ? edgePaddingSecondsInput.value : null),
     passbandRippleDb: DEFAULT_PASSBAND_RIPPLE_DB,
     stopbandAttenuationDb: DEFAULT_STOPBAND_ATTENUATION_DB
@@ -2723,7 +2723,7 @@ function validateFilterSpec(fs, spec) {
       lowpassPassHz: null,
       lowpassSixDbHz: null,
       edgePaddingEnabled: false,
-      edgePaddingMode: "zero",
+      edgePaddingMode: "reflect",
       edgePaddingSeconds: null,
       passbandRippleDb: DEFAULT_PASSBAND_RIPPLE_DB,
       stopbandAttenuationDb: DEFAULT_STOPBAND_ATTENUATION_DB,
@@ -2823,7 +2823,7 @@ function validateFilterSpec(fs, spec) {
     lowpassPassHz: lpPass,
     lowpassSixDbHz: lpPass === null ? null : lpSix,
     edgePaddingEnabled: edgePaddingEnabled,
-    edgePaddingMode: "zero",
+    edgePaddingMode: "reflect",
     edgePaddingSeconds: edgePaddingSeconds,
     passbandRippleDb: DEFAULT_PASSBAND_RIPPLE_DB,
     stopbandAttenuationDb: DEFAULT_STOPBAND_ATTENUATION_DB,

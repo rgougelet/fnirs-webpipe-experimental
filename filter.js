@@ -14,9 +14,9 @@ function applyBasicIirFilter(series, fs, spec, mode) {
   const stages = buildBasicIirStages(fs, spec);
   if (!stages.length) return series.slice();
 
-  const padding = resolveEdgePadding(series.length, fs, spec);
-  const input = padding.enabled ? zeroPad(series, padding.samples) : series.slice();
-  let output = forwardBackwardCascade(input, stages);
+  const padding = resolveEdgePadding(series.length, fs, spec, stages.length);
+  const input = padding.enabled ? reflectPadOdd(series, padding.samples) : series.slice();
+  let output = filtfiltCascade(input, stages);
 
   if (padding.enabled) {
     output = output.slice(padding.samples, padding.samples + series.length);
@@ -87,27 +87,33 @@ function createHighpassBiquad(fs, cutoffHz) {
   return { b0, b1, b2, a1, a2 };
 }
 
-function forwardBackwardCascade(series, stages) {
-  let y = cascadeBiquads(series, stages);
+function filtfiltCascade(series, stages) {
+  let y = cascadeBiquads(series, stages, true);
   y.reverse();
-  y = cascadeBiquads(y, stages);
+  y = cascadeBiquads(y, stages, true);
   y.reverse();
   return y;
 }
 
-function cascadeBiquads(series, stages) {
+function cascadeBiquads(series, stages, useSteadyStateInit) {
   let output = series.slice();
   for (let i = 0; i < stages.length; i++) {
     const sec = stages[i];
-    output = biquadDf2t(output, sec.b0, sec.b1, sec.b2, sec.a1, sec.a2);
+    output = biquadDf2t(output, sec, useSteadyStateInit);
   }
   return output;
 }
 
-function biquadDf2t(series, b0, b1, b2, a1, a2) {
+function biquadDf2t(series, section, useSteadyStateInit) {
+  const { b0, b1, b2, a1, a2 } = section;
   const output = new Array(series.length).fill(0);
   let z1 = 0;
   let z2 = 0;
+  if (useSteadyStateInit && series.length) {
+    const zi = getSectionSteadyState(section, Number(series[0]) || 0);
+    z1 = zi.z1;
+    z2 = zi.z2;
+  }
   for (let i = 0; i < series.length; i++) {
     const xn = Number(series[i]) || 0;
     const yn = b0 * xn + z1;
@@ -116,6 +122,17 @@ function biquadDf2t(series, b0, b1, b2, a1, a2) {
     output[i] = yn;
   }
   return output;
+}
+
+function getSectionSteadyState(section, x0) {
+  const { b0, b1, b2, a1, a2 } = section;
+  const gainDen = 1 + a1 + a2;
+  const gainNum = b0 + b1 + b2;
+  const y0 = Math.abs(gainDen) < 1e-12 ? (b0 * x0) : ((gainNum / gainDen) * x0);
+  return {
+    z1: y0 - b0 * x0,
+    z2: b2 * x0 - a2 * y0
+  };
 }
 
 function sanitizeFiniteSeries(series, fallback) {
@@ -131,21 +148,30 @@ function sanitizeFiniteSeries(series, fallback) {
   return Array.isArray(fallback) ? fallback.slice() : [];
 }
 
-function resolveEdgePadding(length, fs, spec) {
+function resolveEdgePadding(length, fs, spec, stageCount) {
   const enabled = !!(spec && spec.edgePaddingEnabled);
   const seconds = finiteOr(spec && spec.edgePaddingSeconds, 10.0);
   if (!enabled || !Number.isFinite(fs) || fs <= 0 || !Number.isFinite(length) || length < 3) {
     return { enabled: false, samples: 0 };
   }
   const requested = Math.max(10.0, seconds);
-  const samples = Math.max(0, Math.round(requested * fs));
+  const intrinsic = Math.max(1, 3 * Math.max(1, Number(stageCount) || 1));
+  const samples = Math.max(intrinsic, Math.round(requested * fs));
   return { enabled: samples > 0, samples: samples };
 }
 
-function zeroPad(series, padSamples) {
-  if (!Array.isArray(series) || !series.length || padSamples <= 0) return series.slice();
-  const left = new Array(padSamples).fill(0);
-  const right = new Array(padSamples).fill(0);
+function reflectPadOdd(series, padSamples) {
+  if (!Array.isArray(series) || series.length < 2 || padSamples <= 0) return series.slice();
+  const count = Math.min(Math.max(0, padSamples), series.length - 1);
+  if (!count) return series.slice();
+  const first = Number(series[0]) || 0;
+  const last = Number(series[series.length - 1]) || 0;
+  const left = new Array(count);
+  const right = new Array(count);
+  for (let i = 0; i < count; i++) {
+    left[i] = 2 * first - (Number(series[count - i]) || 0);
+    right[i] = 2 * last - (Number(series[series.length - 2 - i]) || 0);
+  }
   return left.concat(series, right);
 }
 
