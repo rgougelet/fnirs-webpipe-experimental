@@ -1,9 +1,9 @@
 (function () {
   const DEFAULT_LINE_COLOR = "#0f172a";
   const DEFAULT_HEIGHT = 430;
-  const MIN_HEIGHT = 320;
-  const MAX_HEIGHT = 520;
-  const MIN_WIDTH = 320;
+  const MIN_HEIGHT = 240;
+  const MAX_HEIGHT = 1400;
+  const MIN_WIDTH = 300;
 
   function createPlotController(host, options = {}) {
     const controller = {
@@ -84,6 +84,8 @@
     clearPlotController(controller);
     controller.currentModel = model;
     controller.chartSignature = signature;
+    const plotSize = getPlotSize(controller.host);
+    const compact = plotSize.width < 900;
 
     const plugins = [
       createAnnotationPlugin(controller),
@@ -91,8 +93,8 @@
     ];
 
     const opts = {
-      width: getPlotSize(controller.host).width,
-      height: getPlotSize(controller.host).height,
+      width: plotSize.width,
+      height: plotSize.height,
       padding: [10, 12, 6, 8],
       legend: { show: false },
       select: { show: true },
@@ -109,15 +111,15 @@
         {
           scale: "x",
           side: 2,
-          size: 56,
+          size: compact ? 48 : 56,
           gap: 8,
           label: "Time (s)",
-          labelSize: 24,
-          labelGap: 10,
-          font: "13px sans-serif",
-          labelFont: "600 13px sans-serif",
+          labelSize: compact ? 20 : 24,
+          labelGap: compact ? 8 : 10,
+          font: compact ? "12px sans-serif" : "13px sans-serif",
+          labelFont: compact ? "600 12px sans-serif" : "600 13px sans-serif",
           stroke: "#0f172a",
-          space: 72,
+          space: compact ? 56 : 72,
           values: (_u, splits) => splits.map(v => formatTimeSeconds(v)),
           grid: { stroke: "#dbe4ef", width: 1 },
           ticks: { stroke: "#94a3b8", width: 1, size: 6 },
@@ -126,15 +128,15 @@
         {
           scale: "y",
           side: 3,
-          size: 104,
-          gap: 10,
+          size: compact ? 82 : 104,
+          gap: compact ? 8 : 10,
           label: model.yLabel,
-          labelSize: 34,
-          labelGap: 10,
-          font: "13px sans-serif",
-          labelFont: "600 13px sans-serif",
+          labelSize: compact ? 26 : 34,
+          labelGap: compact ? 8 : 10,
+          font: compact ? "12px sans-serif" : "13px sans-serif",
+          labelFont: compact ? "600 12px sans-serif" : "600 13px sans-serif",
           stroke: "#0f172a",
-          space: 52,
+          space: compact ? 40 : 52,
           values: (u, splits) => {
             const min = Number.isFinite(u.scales.y.min) ? u.scales.y.min : 0;
             const max = Number.isFinite(u.scales.y.max) ? u.scales.y.max : min;
@@ -324,7 +326,11 @@
 
   function getPlotSize(host) {
     const width = Math.max(MIN_WIDTH, Math.round(host && host.clientWidth ? host.clientWidth : 900));
-    const height = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(width * 0.4), DEFAULT_HEIGHT));
+    const viewportMaxHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round((window.innerHeight || 900) - 220)));
+    const targetFromWidth = Math.round(width * 0.44);
+    const hostHeight = host && host.clientHeight ? Math.round(host.clientHeight) : 0;
+    const preferred = hostHeight > 0 ? hostHeight : Math.max(targetFromWidth, DEFAULT_HEIGHT);
+    const height = Math.max(MIN_HEIGHT, Math.min(viewportMaxHeight, preferred));
     return { width, height };
   }
 

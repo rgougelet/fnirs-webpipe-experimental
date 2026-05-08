@@ -158,6 +158,8 @@ canvas {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .plot-header {
@@ -179,11 +181,11 @@ body { overflow: hidden; }
 
 #appShell {
   display: grid;
-  grid-template-columns: 560px minmax(0, 1fr);
+  grid-template-columns: var(--left-panel-width, 560px) 10px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas:
-    "left plot";
-  gap: 8px;
+    "left splitter plot";
+  gap: 0;
   overflow: hidden;
   max-width: none;
   width: 100vw;
@@ -211,6 +213,33 @@ body { overflow: hidden; }
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding-right: 6px;
+}
+
+#leftSplitter {
+  grid-area: splitter;
+  cursor: col-resize;
+  position: relative;
+  user-select: none;
+  touch-action: none;
+  background: transparent;
+}
+
+#leftSplitter::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+#leftSplitter:hover::before,
+body.is-resizing #leftSplitter::before {
+  background: #0284c7;
 }
 
 #controls {
@@ -237,6 +266,7 @@ body { overflow: hidden; }
   flex-direction: column;
   gap: 6px;
   align-self: stretch;
+  padding-left: 6px;
 }
 
 #stageSummaryHost {
@@ -286,7 +316,8 @@ body { overflow: hidden; }
 
 .plot-chart-host {
   width: 100%;
-  min-height: 320px;
+  min-height: 260px;
+  flex: 1 1 auto;
 }
 
 .plot-chart-host > .uplot {
@@ -489,6 +520,15 @@ body.theme-dark .channel-source-label {
   color: #94a3b8;
 }
 
+body.theme-dark #leftSplitter::before {
+  background: #334155;
+}
+
+body.theme-dark #leftSplitter:hover::before,
+body.theme-dark.is-resizing #leftSplitter::before {
+  background: #38bdf8;
+}
+
 body.theme-dark .filter-toggle-btn {
   background: #0f172a;
   border-color: #334155;
@@ -549,4 +589,27 @@ body.theme-dark canvas {
 body.theme-dark .plot-chart-host > .uplot {
   border-color: #334155;
   border-right-color: #475569;
+}
+
+@media (max-width: 1100px) {
+  #appShell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "left"
+      "plot";
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  #leftSplitter {
+    display: none;
+  }
+
+  #leftPanel {
+    padding-right: 0;
+  }
+
+  #plotArea {
+    padding-left: 0;
+  }
 }

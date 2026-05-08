@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.15";
-const APP_LAST_UPDATED = "2026-05-08 10:25 EDT";
+const APP_VERSION = "0.3.16";
+const APP_LAST_UPDATED = "2026-05-08 10:58 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -12,6 +12,8 @@ const protocolHost = document.getElementById("protocolHost");
 const plotGrid = document.getElementById("plotGrid");
 const plotScrollerHost = document.getElementById("plotScrollerHost");
 const stageSummaryHost = document.getElementById("stageSummaryHost");
+const appShellEl = document.getElementById("appShell");
+const leftSplitterEl = document.getElementById("leftSplitter");
 const appVersionEl = document.getElementById("appVersion");
 const appLastUpdatedEl = document.getElementById("appLastUpdated");
 
@@ -89,6 +91,7 @@ let themeToggleBtn = null;
 let currentTheme = "dark";
 const THEME_STORAGE_KEY = "fnirs-webpipe-theme";
 const PLOT_MODE_STORAGE_KEY = "fnirs-webpipe-plot-mode";
+const LEFT_PANEL_WIDTH_STORAGE_KEY = "fnirs-webpipe-left-panel-width";
 const DEFAULT_PASSBAND_RIPPLE_DB = 0.1;
 const DEFAULT_STOPBAND_ATTENUATION_DB = 6.0;
 const MIN_EDGE_PADDING_SECONDS = 10.0;
@@ -126,6 +129,7 @@ input.addEventListener("change", handleInput);
 initPlotLayout();
 buildControls();
 renderAppLastUpdated();
+initLeftSplitter();
 
 initUrlProtocolListener();
 
@@ -133,6 +137,93 @@ function renderAppLastUpdated() {
   if (appVersionEl) appVersionEl.textContent = APP_VERSION;
   if (!appLastUpdatedEl) return;
   appLastUpdatedEl.textContent = "Last updated: " + APP_LAST_UPDATED;
+}
+
+function initLeftSplitter() {
+  if (!appShellEl || !leftSplitterEl) return;
+
+  const readStoredWidth = () => {
+    try {
+      const raw = localStorage.getItem(LEFT_PANEL_WIDTH_STORAGE_KEY);
+      const value = Number(raw);
+      return Number.isFinite(value) ? value : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const saveWidth = widthPx => {
+    try {
+      localStorage.setItem(LEFT_PANEL_WIDTH_STORAGE_KEY, String(Math.round(widthPx)));
+    } catch (e) {}
+  };
+
+  const getClampRange = () => {
+    const minWidth = 320;
+    const gutter = 380;
+    const maxWidth = Math.max(minWidth, window.innerWidth - gutter);
+    return { minWidth, maxWidth };
+  };
+
+  const applyWidth = (widthPx, persist) => {
+    const { minWidth, maxWidth } = getClampRange();
+    const clamped = Math.max(minWidth, Math.min(maxWidth, Number(widthPx) || minWidth));
+    appShellEl.style.setProperty("--left-panel-width", Math.round(clamped) + "px");
+    if (persist) saveWidth(clamped);
+  };
+
+  const parseCurrentWidth = () => {
+    const computed = getComputedStyle(appShellEl).getPropertyValue("--left-panel-width").trim();
+    if (computed.endsWith("px")) {
+      const parsed = Number(computed.slice(0, -2));
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return 560;
+  };
+
+  const stored = readStoredWidth();
+  applyWidth(stored === null ? parseCurrentWidth() : stored, false);
+
+  let dragging = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  const onPointerMove = event => {
+    if (!dragging) return;
+    const delta = event.clientX - startX;
+    applyWidth(startWidth + delta, false);
+  };
+
+  const onPointerUp = event => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("is-resizing");
+    if (leftSplitterEl.releasePointerCapture) {
+      try { leftSplitterEl.releasePointerCapture(event.pointerId); } catch (e) {}
+    }
+    saveWidth(parseCurrentWidth());
+  };
+
+  leftSplitterEl.addEventListener("pointerdown", event => {
+    dragging = true;
+    startX = event.clientX;
+    startWidth = parseCurrentWidth();
+    document.body.classList.add("is-resizing");
+    if (leftSplitterEl.setPointerCapture) {
+      try { leftSplitterEl.setPointerCapture(event.pointerId); } catch (e) {}
+    }
+    event.preventDefault();
+  });
+
+  leftSplitterEl.addEventListener("dblclick", () => {
+    applyWidth(560, true);
+  });
+
+  window.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", onPointerUp);
+  window.addEventListener("resize", () => {
+    applyWidth(parseCurrentWidth(), false);
+  });
 }
 
 function clearDebugLog() {
