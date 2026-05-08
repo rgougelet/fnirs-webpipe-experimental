@@ -64,6 +64,12 @@ Filter stability policy:
 - Legacy SOS auto-order engine (`rjg_sos`) is deprecated for now due to runtime freezes on interactive redraw.
 - Do not re-enable SOS as default without explicit user request and a dedicated stability pass.
 
+Plot interaction rollback log:
+
+- Zoom interactions are currently disabled in `plot.js` (wheel and drag zoom removed) due to unresolved aspect-ratio/axes behavior.
+- `requestUiRedraw()` in `app.js` currently clears/recreates the plot before redraw to preserve reliable data rendering.
+- After the aspect-ratio issue is fixed, agents should explicitly re-evaluate and potentially restore both behaviors above.
+
 Wrapper policy:
 
 - Prefer raw `git` for ad hoc inspection and branch surgery.

@@ -147,6 +147,10 @@ npm run ui:install
 ## Potential Features (Deferred)
 - Add contextual quick controls under the plot scroller (mode-aware actions). Deferred until redraw stability and performance are fully hardened.
 - Reintroduce advanced SOS auto-order filtering as an optional engine. It is currently deprecated in favor of a fixed-order basic IIR path due to runtime freezes.
+- Plot interaction restore checklist (after aspect-ratio/axes fill issue is resolved):
+  - Re-enable wheel/drag zoom interactions in `plot.js` (currently disabled).
+  - Re-evaluate redraw teardown behavior in `requestUiRedraw()` in `app.js` (currently clears/rebuilds plot each interaction for reliability).
+  - Keep splitter/responsive sizing, but validate axes fill and data rendering at multiple aspect ratios before restoring zoom.
 
 ## Status
 Active development.
