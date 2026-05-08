@@ -329,12 +329,6 @@ body.is-resizing #leftSplitter::before {
   overflow: hidden;
 }
 
-.plot-chart-host .u-wrap canvas {
-  width: auto;
-  height: auto;
-  border-radius: 0;
-}
-
 .plot-chart-host .u-axis,
 .plot-chart-host .u-label {
   color: #0f172a;
