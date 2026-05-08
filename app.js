@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.13";
-const APP_LAST_UPDATED = "2026-05-08 10:13 EDT";
+const APP_VERSION = "0.3.14";
+const APP_LAST_UPDATED = "2026-05-08 10:19 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 

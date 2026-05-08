@@ -22,6 +22,9 @@ Pre-push version rule:
   - `app.js` `APP_VERSION`
   - `index.html` visible `v...` strings
   - `package.json` `version`
+- Keep the cache-bust token aligned with app version:
+  - `index.html` local CSS/JS asset query params `?v=...`
+  - Example: `app.js?v=<APP_VERSION>`, `style.css?v=<APP_VERSION>`
 - Keep the visible timestamp aligned across:
   - `app.js` `APP_LAST_UPDATED`
   - `index.html` visible `Last updated:` strings
