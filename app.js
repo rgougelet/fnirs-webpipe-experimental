@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.12";
-const APP_LAST_UPDATED = "2026-05-08 10:01 EDT";
+const APP_VERSION = "0.3.13";
+const APP_LAST_UPDATED = "2026-05-08 10:13 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -94,13 +94,11 @@ const DEFAULT_STOPBAND_ATTENUATION_DB = 6.0;
 const MIN_EDGE_PADDING_SECONDS = 10.0;
 let currentPlotMode = "raw";
 let plotScrollerEl = null;
-let plotModeContextEl = null;
 let plotTabBarEl = null;
 let plotTabButtons = [];
-let pipelineSectionEl = null;
-let filterSectionEl = null;
-let cutSectionEl = null;
-let debugSectionEl = null;
+let uiRefreshScheduled = false;
+let uiRefreshNeedsMeta = false;
+let uiRefreshNeedsNavigation = false;
 let logSequence = 0;
 let debugLogEntries = [];
 let debugLogPanelEl = null;
@@ -286,7 +284,7 @@ function setPlotMode(mode) {
     localStorage.setItem(PLOT_MODE_STORAGE_KEY, currentPlotMode);
   } catch (e) {}
   applyPlotMode();
-  redraw();
+  requestUiRedraw();
 }
 
 function resetAllState() {
@@ -666,7 +664,7 @@ function buildControls() {
   branchTagInput = document.createElement("input");
   branchTagInput.type = "text";
   branchTagInput.placeholder = "e.g., fs32, qc1, motionTrim";
-  branchTagInput.oninput = renderMeta;
+  branchTagInput.oninput = () => requestUiRedraw({ meta: true });
   branchTagInput.className = "p-2 border rounded bg-white w-full";
   const summaryTitle = document.createElement("div");
   summaryTitle.className = "text-xs text-slate-600 font-semibold";
@@ -715,8 +713,7 @@ function buildControls() {
     b.onclick = () => {
       currentWavelength = wl;
       rebuildRadioSelections();
-      redraw();
-      renderMeta();
+      requestUiRedraw({ meta: true });
     };
     wlRow.appendChild(b);
   });
@@ -752,8 +749,7 @@ function buildControls() {
       b.onclick = () => {
         currentChannel = item.index;
         rebuildRadioSelections();
-        redraw();
-        renderMeta();
+        requestUiRedraw({ meta: true });
       };
       btnWrap.appendChild(b);
     });
@@ -781,8 +777,7 @@ function buildControls() {
   signalDomainSelect.value = "intensity";
   signalDomainSelect.onchange = () => {
     updatePipelineSummary();
-    redraw();
-    renderMeta();
+    requestUiRedraw({ meta: true });
   };
   domainRow.appendChild(domainLbl);
   domainRow.appendChild(signalDomainSelect);
@@ -797,8 +792,7 @@ function buildControls() {
     filterStepEnabled = !!filterStepCheckbox.checked;
     updateFilterToggleButtons();
     updatePipelineSummary();
-    redraw();
-    renderMeta();
+    requestUiRedraw({ meta: true });
   };
   filterMasterRow.appendChild(filterStepCheckbox);
   filterMasterRow.appendChild(document.createTextNode("Enable filter"));
@@ -812,8 +806,7 @@ function buildControls() {
   trimStepCheckbox.onchange = () => {
     trimStepEnabled = !!trimStepCheckbox.checked;
     updatePipelineSummary();
-    redraw();
-    renderMeta();
+    requestUiRedraw({ meta: true });
   };
   trimMasterRow.appendChild(trimStepCheckbox);
   trimMasterRow.appendChild(document.createTextNode("Enable trim"));
@@ -833,8 +826,7 @@ function buildControls() {
   dpfWl1Input.className = "p-2 border rounded bg-white w-full text-sm";
   dpfWl1Input.title = "Differential pathlength factor (unitless) for wavelength 1. This is not channel distance.";
   dpfWl1Input.oninput = () => {
-    redraw();
-    renderMeta();
+    requestUiRedraw({ meta: true });
   };
   dpfWl2Input = document.createElement("input");
   dpfWl2Input.type = "text";
@@ -843,8 +835,7 @@ function buildControls() {
   dpfWl2Input.className = "p-2 border rounded bg-white w-full text-sm";
   dpfWl2Input.title = "Differential pathlength factor (unitless) for wavelength 2. This is not channel distance.";
   dpfWl2Input.oninput = () => {
-    redraw();
-    renderMeta();
+    requestUiRedraw({ meta: true });
   };
   const dpfWl1Lbl = document.createElement("div");
   dpfWl1Lbl.className = "text-xs text-slate-600 font-semibold whitespace-nowrap";
@@ -874,7 +865,7 @@ function buildControls() {
   exclusionTable = document.createElement("textarea");
   exclusionTable.rows = 6;
   exclusionTable.placeholder = "23, 25\n34, 36";
-  exclusionTable.oninput = () => { redraw(); renderMeta(); };
+  exclusionTable.oninput = () => requestUiRedraw({ meta: true });
   exclusionTable.className = "p-2 border rounded bg-white w-full";
   exclusionTable.style.resize = "vertical";
   exDiv.appendChild(exclusionTable);
@@ -888,7 +879,7 @@ function buildControls() {
   lowCutInput.inputMode = "decimal";
   lowCutInput.placeholder = "1.0";
   lowCutInput.title = "Lower in-band edge in Hz. In [0.5 1 9 9.5] with shape [0 1 1 0], this is the second value where gain reaches the flat in-band region.";
-  lowCutInput.oninput = () => { redraw(); renderMeta(); };
+  lowCutInput.oninput = () => requestUiRedraw({ meta: true });
   lowCutInput.className = "p-2 border rounded bg-white w-full";
   lowCutInput.value = "0.1";
   const lowLbl = document.createElement("div");
@@ -899,7 +890,7 @@ function buildControls() {
   lowCutSixDbInput.inputMode = "decimal";
   lowCutSixDbInput.placeholder = "0.05";
   lowCutSixDbInput.title = "Lower stop edge in Hz. In [0.5 1 9 9.5] with shape [0 1 1 0], this is the first value on the rise into the in-band region.";
-  lowCutSixDbInput.oninput = () => { redraw(); renderMeta(); };
+  lowCutSixDbInput.oninput = () => requestUiRedraw({ meta: true });
   lowCutSixDbInput.className = "p-2 border rounded bg-white w-full";
   lowCutSixDbInput.value = "0.05";
   const lowSixDbLbl = document.createElement("div");
@@ -912,8 +903,7 @@ function buildControls() {
   lowToggleBtn.onclick = () => {
     lowCutEnabled = !lowCutEnabled;
     updateFilterToggleButtons();
-    redraw();
-    renderMeta();
+    requestUiRedraw({ meta: true });
   };
   const lowRow = document.createElement("div");
   lowRow.className = "grid grid-cols-[auto_72px_auto_72px_auto] gap-2 items-center";
@@ -928,7 +918,7 @@ function buildControls() {
   highCutInput.inputMode = "decimal";
   highCutInput.placeholder = "9.0";
   highCutInput.title = "Upper in-band edge in Hz. In [0.5 1 9 9.5] with shape [0 1 1 0], this is the third value where the flat in-band region ends.";
-  highCutInput.oninput = () => { redraw(); renderMeta(); };
+  highCutInput.oninput = () => requestUiRedraw({ meta: true });
   highCutInput.className = "p-2 border rounded bg-white w-full";
   highCutInput.value = "10.0";
   const highLbl = document.createElement("div");
@@ -939,7 +929,7 @@ function buildControls() {
   highCutSixDbInput.inputMode = "decimal";
   highCutSixDbInput.placeholder = "12.5";
   highCutSixDbInput.title = "Upper stop edge in Hz. In [0.5 1 9 9.5] with shape [0 1 1 0], this is the fourth value on the fall out of the in-band region.";
-  highCutSixDbInput.oninput = () => { redraw(); renderMeta(); };
+  highCutSixDbInput.oninput = () => requestUiRedraw({ meta: true });
   highCutSixDbInput.className = "p-2 border rounded bg-white w-full";
   highCutSixDbInput.value = "12.5";
   const highSixDbLbl = document.createElement("div");
@@ -952,8 +942,7 @@ function buildControls() {
   highToggleBtn.onclick = () => {
     highCutEnabled = !highCutEnabled;
     updateFilterToggleButtons();
-    redraw();
-    renderMeta();
+    requestUiRedraw({ meta: true });
   };
   const highRow = document.createElement("div");
   highRow.className = "grid grid-cols-[auto_72px_auto_72px_auto] gap-2 items-center";
@@ -973,8 +962,7 @@ function buildControls() {
   dcRestoreCheckbox.className = "h-4 w-4 justify-self-start";
   dcRestoreCheckbox.checked = true;
   dcRestoreCheckbox.onchange = () => {
-    redraw();
-    renderMeta();
+    requestUiRedraw({ meta: true });
   };
   dcRow.appendChild(dcLbl);
   dcRow.appendChild(dcRestoreCheckbox);
@@ -991,8 +979,7 @@ function buildControls() {
   edgePaddingCheckbox.checked = true;
   edgePaddingCheckbox.onchange = () => {
     updateFilterToggleButtons();
-    redraw();
-    renderMeta();
+    requestUiRedraw({ meta: true });
   };
   edgePaddingCheckbox.title = "Zero-pad before filtering. Uses at least 10 seconds on each side, adjusted by sampling rate.";
   edgePaddingSecondsInput = document.createElement("input");
@@ -1003,8 +990,7 @@ function buildControls() {
   edgePaddingSecondsInput.className = "p-2 border rounded bg-white w-full";
   edgePaddingSecondsInput.title = "Zero-padding duration in seconds on each side. Values below 10 seconds are raised to 10.";
   edgePaddingSecondsInput.oninput = () => {
-    redraw();
-    renderMeta();
+    requestUiRedraw({ meta: true });
   };
   padRow.appendChild(padLbl);
   padRow.appendChild(edgePaddingCheckbox);
@@ -1033,9 +1019,7 @@ function buildControls() {
   viewWindowSecondsInput.className = "p-2 border rounded bg-white w-full text-sm";
   viewWindowSecondsInput.title = "Visible time span in seconds. Larger than the record duration shows the full trace.";
   viewWindowSecondsInput.oninput = () => {
-    if (plotController) plotController.clear();
-    updateViewNavigationUi(currentPlotDurationSeconds || getReferenceDurationSeconds());
-    redraw();
+    requestUiRedraw({ navigation: true });
   };
   windowRow.appendChild(windowLbl);
   windowRow.appendChild(viewWindowSecondsInput);
@@ -1051,7 +1035,7 @@ function buildControls() {
   notesInput = document.createElement("textarea");
   notesInput.rows = 1;
   notesInput.placeholder = "Notes about processing choices, rationale, caveats...";
-  notesInput.oninput = renderMeta;
+  notesInput.oninput = () => requestUiRedraw({ meta: true });
   notesInput.style.maxHeight = "56px";
   notesInput.style.overflowY = "auto";
   notesInput.style.resize = "vertical";
@@ -1076,20 +1060,12 @@ function buildControls() {
     accordionStack.appendChild(createAccordionSection("Events", eventsContentEl, false));
     accordionStack.appendChild(createAccordionSection("Wavelength", wlDiv, true));
     accordionStack.appendChild(createAccordionSection("Channel", chDiv, true));
-    pipelineSectionEl = createAccordionSection("Pipeline", pipelineDiv, false);
-    filterSectionEl = createAccordionSection("Filter", fDiv, true);
-    cutSectionEl = createAccordionSection("Cut Intervals", exDiv, false);
-    accordionStack.appendChild(pipelineSectionEl);
-    accordionStack.appendChild(filterSectionEl);
-    accordionStack.appendChild(cutSectionEl);
+    accordionStack.appendChild(createAccordionSection("Pipeline", pipelineDiv, false));
+    accordionStack.appendChild(createAccordionSection("Filter", fDiv, true));
+    accordionStack.appendChild(createAccordionSection("Cut Intervals", exDiv, false));
     accordionStack.appendChild(createAccordionSection("Notes", notesDiv, false));
-  } else {
-    pipelineSectionEl = null;
-    filterSectionEl = null;
-    cutSectionEl = null;
   }
-  debugSectionEl = createAccordionSection("Debug Log", debugDiv, false);
-  accordionStack.appendChild(debugSectionEl);
+  accordionStack.appendChild(createAccordionSection("Debug Log", debugDiv, false));
   controls.appendChild(accordionStack);
   rebuildRadioSelections();
   updateFilterToggleButtons();
@@ -1130,15 +1106,15 @@ function updateFilterToggleButtons() {
   const anyFilterStageEnabled = lowStageEnabled || highStageEnabled;
 
   if (lowToggleBtn) {
-    lowToggleBtn.textContent = lowCutEnabled ? "✅" : "❌";
-    lowToggleBtn.classList.toggle("active", lowCutEnabled);
-    lowToggleBtn.classList.toggle("inactive", !lowCutEnabled);
+    lowToggleBtn.textContent = lowStageEnabled ? "ON" : "OFF";
+    lowToggleBtn.classList.toggle("active", lowStageEnabled);
+    lowToggleBtn.classList.toggle("inactive", !lowStageEnabled);
     lowToggleBtn.disabled = !filterMasterEnabled;
   }
   if (highToggleBtn) {
-    highToggleBtn.textContent = highCutEnabled ? "✅" : "❌";
-    highToggleBtn.classList.toggle("active", highCutEnabled);
-    highToggleBtn.classList.toggle("inactive", !highCutEnabled);
+    highToggleBtn.textContent = highStageEnabled ? "ON" : "OFF";
+    highToggleBtn.classList.toggle("active", highStageEnabled);
+    highToggleBtn.classList.toggle("inactive", !highStageEnabled);
     highToggleBtn.disabled = !filterMasterEnabled;
   }
   if (lowCutInput) lowCutInput.disabled = !lowStageEnabled;
@@ -1315,7 +1291,7 @@ function resetProtocolUiOnly() {
 
   rebuildRadioSelections();
   renderMeta();
-  redraw();
+  requestUiRedraw({ meta: true });
 }
 
 /* ================= Plotting ================= */
@@ -1549,8 +1525,6 @@ function redraw() {
     if (activePlotModel) plotController.setModel(activePlotModel);
     else plotController.clear();
   }
-  updatePlotModeControls();
-
   renderStageSummary(stageSummaryVisible ? stageSummaryModel : null);
   debugLog("redraw:end", {
     elapsedMs: Number((performance.now() - redrawStartMs).toFixed(1)),
@@ -1821,8 +1795,7 @@ function applyProtocol(protocol) {
   updatePipelineSummary();
 
   rebuildRadioSelections();
-  renderMeta();
-  redraw();
+  requestUiRedraw({ meta: true });
 }
 
 /* ================= URL protocol share ================= */
@@ -2504,9 +2477,6 @@ function initPlotLayout() {
 }
 
 function createPlotScroller() {
-  const wrapper = document.createElement("div");
-  wrapper.className = "plot-scroller-wrap";
-
   const scroller = document.createElement("div");
   scroller.className = "plot-scroller";
 
@@ -2519,9 +2489,8 @@ function createPlotScroller() {
   viewOffsetSlider.disabled = true;
   viewOffsetSlider.className = "plot-time-slider";
   viewOffsetSlider.oninput = () => {
-    if (plotController) plotController.clear();
     updateViewNavigationSummary(currentPlotDurationSeconds || getReferenceDurationSeconds());
-    redraw();
+    requestUiRedraw();
   };
 
   viewOffsetSummaryEl = document.createElement("div");
@@ -2530,12 +2499,7 @@ function createPlotScroller() {
 
   scroller.appendChild(viewOffsetSlider);
   scroller.appendChild(viewOffsetSummaryEl);
-  plotModeContextEl = document.createElement("div");
-  plotModeContextEl.className = "plot-mode-controls";
-  wrapper.appendChild(scroller);
-  wrapper.appendChild(plotModeContextEl);
-  updatePlotModeControls();
-  return wrapper;
+  return scroller;
 }
 
 function computeStats(series) {
@@ -2791,59 +2755,25 @@ function applyPlotMode() {
   if (plotScrollerHost) {
     plotScrollerHost.style.display = "";
   }
-  updatePlotModeControls();
   rebuildRadioSelections();
 }
 
-function setToggleFromContext(checkbox) {
-  if (!checkbox) return;
-  checkbox.checked = !checkbox.checked;
-  if (typeof checkbox.onchange === "function") checkbox.onchange();
-}
-
-function openControlSection(sectionEl) {
-  if (!sectionEl) return;
-  sectionEl.open = true;
-  sectionEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
-}
-
-function addContextButton(host, label, onClick) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "plot-mode-control-btn";
-  button.textContent = label;
-  button.onclick = onClick;
-  host.appendChild(button);
-}
-
-function updatePlotModeControls() {
-  if (!plotModeContextEl) return;
-  plotModeContextEl.textContent = "";
-
-  const info = document.createElement("div");
-  info.className = "plot-mode-controls-note";
-  const actions = document.createElement("div");
-  actions.className = "plot-mode-controls-actions";
-
-  if (currentPlotMode === "filtered") {
-    info.textContent = "Filtered view: filter then cut.";
-    addContextButton(actions, filterStepEnabled ? "Disable Filter" : "Enable Filter", () => setToggleFromContext(filterStepCheckbox));
-    addContextButton(actions, trimStepEnabled ? "Disable Cut" : "Enable Cut", () => setToggleFromContext(trimStepCheckbox));
-    addContextButton(actions, "Open Filter Controls", () => openControlSection(filterSectionEl));
-  } else if (currentPlotMode === "trimmed") {
-    info.textContent = "Cut view: intervals removed from the signal.";
-    addContextButton(actions, trimStepEnabled ? "Disable Cut" : "Enable Cut", () => setToggleFromContext(trimStepCheckbox));
-    addContextButton(actions, "Open Cut Intervals", () => openControlSection(cutSectionEl));
-  } else if (isHemoglobinPlotMode(currentPlotMode)) {
-    info.textContent = "Hb views use both wavelengths and MBLL (DPF is unitless, not channel distance).";
-    addContextButton(actions, "Open Pipeline", () => openControlSection(pipelineSectionEl));
-  } else {
-    info.textContent = "Raw view: choose signal domain and channel/wavelength controls.";
-    addContextButton(actions, "Open Pipeline", () => openControlSection(pipelineSectionEl));
-  }
-
-  plotModeContextEl.appendChild(info);
-  plotModeContextEl.appendChild(actions);
+function requestUiRedraw(options = {}) {
+  uiRefreshNeedsMeta = uiRefreshNeedsMeta || !!options.meta;
+  uiRefreshNeedsNavigation = uiRefreshNeedsNavigation || !!options.navigation;
+  if (uiRefreshScheduled) return;
+  uiRefreshScheduled = true;
+  requestAnimationFrame(() => {
+    uiRefreshScheduled = false;
+    const refreshMeta = uiRefreshNeedsMeta;
+    const refreshNavigation = uiRefreshNeedsNavigation;
+    uiRefreshNeedsMeta = false;
+    uiRefreshNeedsNavigation = false;
+    if (plotController) plotController.clear();
+    if (refreshNavigation) updateViewNavigationUi(currentPlotDurationSeconds || getReferenceDurationSeconds());
+    redraw();
+    if (refreshMeta) renderMeta();
+  });
 }
 
 function isDcRestoreEnabled() {

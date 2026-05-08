@@ -144,6 +144,9 @@ npm run ui:install
 - `ui:capture:light` runs the light-theme screenshot flow through one stable npm command.
 - `ui:install` installs Chromium for Playwright through one stable npm command.
 
+## Potential Features (Deferred)
+- Add contextual quick controls under the plot scroller (mode-aware actions). Deferred until redraw stability and performance are fully hardened.
+
 ## Status
 Active development.
 
