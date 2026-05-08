@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.20";
-const APP_LAST_UPDATED = "2026-05-08 11:46 EDT";
+const APP_VERSION = "0.3.21";
+const APP_LAST_UPDATED = "2026-05-08 11:56 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -363,9 +363,9 @@ function initTheme() {
 }
 
 function initPlotMode() {
+  currentPlotMode = "raw";
   try {
-    const saved = localStorage.getItem(PLOT_MODE_STORAGE_KEY);
-    currentPlotMode = normalizePlotMode(saved);
+    localStorage.setItem(PLOT_MODE_STORAGE_KEY, currentPlotMode);
   } catch (e) {}
 }
 
