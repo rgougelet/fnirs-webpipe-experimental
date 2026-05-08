@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.16";
-const APP_LAST_UPDATED = "2026-05-08 10:58 EDT";
+const APP_VERSION = "0.3.17";
+const APP_LAST_UPDATED = "2026-05-08 11:05 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -2860,7 +2860,6 @@ function requestUiRedraw(options = {}) {
     const refreshNavigation = uiRefreshNeedsNavigation;
     uiRefreshNeedsMeta = false;
     uiRefreshNeedsNavigation = false;
-    if (plotController) plotController.clear();
     if (refreshNavigation) updateViewNavigationUi(currentPlotDurationSeconds || getReferenceDurationSeconds());
     redraw();
     if (refreshMeta) renderMeta();

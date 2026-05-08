@@ -1,8 +1,8 @@
 (function () {
   const DEFAULT_LINE_COLOR = "#0f172a";
   const DEFAULT_HEIGHT = 430;
-  const MIN_HEIGHT = 240;
-  const MAX_HEIGHT = 1400;
+  const MIN_HEIGHT = 220;
+  const MAX_HEIGHT = 2400;
   const MIN_WIDTH = 300;
 
   function createPlotController(host, options = {}) {
@@ -326,11 +326,21 @@
 
   function getPlotSize(host) {
     const width = Math.max(MIN_WIDTH, Math.round(host && host.clientWidth ? host.clientWidth : 900));
-    const viewportMaxHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round((window.innerHeight || 900) - 220)));
-    const targetFromWidth = Math.round(width * 0.44);
     const hostHeight = host && host.clientHeight ? Math.round(host.clientHeight) : 0;
-    const preferred = hostHeight > 0 ? hostHeight : Math.max(targetFromWidth, DEFAULT_HEIGHT);
-    const height = Math.max(MIN_HEIGHT, Math.min(viewportMaxHeight, preferred));
+    let preferred = hostHeight > 0 ? hostHeight : Math.max(Math.round(width * 0.44), DEFAULT_HEIGHT);
+
+    const panel = host && host.parentElement ? host.parentElement : null;
+    if (panel && panel.classList && panel.classList.contains("plot-panel")) {
+      const header = panel.querySelector(".plot-header");
+      const headerHeight = header ? header.offsetHeight : 0;
+      const panelGap = 8;
+      const panelDerived = Math.round(panel.clientHeight - headerHeight - panelGap);
+      if (panelDerived > 0) preferred = panelDerived;
+    }
+
+    const viewportDerived = Math.round((window.innerHeight || 900) - 210);
+    const boundedMax = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, viewportDerived));
+    const height = Math.max(MIN_HEIGHT, Math.min(boundedMax, preferred));
     return { width, height };
   }
 
