@@ -69,7 +69,9 @@
       recreateChart(controller, normalized, signature);
     } else {
       controller.suppressViewChange = true;
-      controller.chart.setData([normalized.xData, normalized.yData], false);
+      // Recompute y-scale for each new data payload; preserving stale scales can make
+      // channel/tab switches look blank when amplitudes differ substantially.
+      controller.chart.setData([normalized.xData, normalized.yData], true);
       controller.chart.axes[1].label = normalized.yLabel;
       controller.chart.series[1].stroke = normalized.stroke;
       controller.chart.redraw();
