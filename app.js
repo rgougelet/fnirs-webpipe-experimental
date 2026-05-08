@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.22";
-const APP_LAST_UPDATED = "2026-05-08 13:52 EDT";
+const APP_VERSION = "0.3.23";
+const APP_LAST_UPDATED = "2026-05-08 14:08 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -48,8 +48,6 @@ let lowToggleBtn = null;
 let highToggleBtn = null;
 let filterEngineSelect = null;
 let dcRestoreCheckbox = null;
-let edgePaddingCheckbox = null;
-let edgePaddingSecondsInput = null;
 let plotModeSelect = null;
 let signalDomainSelect = null;
 let filterStepCheckbox = null;
@@ -1059,34 +1057,6 @@ function buildControls() {
   dcRow.appendChild(dcRestoreCheckbox);
   dcRestoreCheckbox.title = "Restore original mean after filtering/scaling.";
 
-  const padRow = document.createElement("div");
-  padRow.className = "grid grid-cols-[auto_auto_72px] gap-2 items-center";
-  const padLbl = document.createElement("div");
-  padLbl.className = "text-xs text-slate-600 font-semibold whitespace-nowrap";
-  padLbl.textContent = "Edge reflect:";
-  edgePaddingCheckbox = document.createElement("input");
-  edgePaddingCheckbox.type = "checkbox";
-  edgePaddingCheckbox.className = "h-4 w-4 justify-self-start";
-  edgePaddingCheckbox.checked = true;
-  edgePaddingCheckbox.onchange = () => {
-    updateFilterToggleButtons();
-    requestUiRedraw({ meta: true });
-  };
-  edgePaddingCheckbox.title = "Reflect the signal edges before forward-backward filtering. Uses at least 10 seconds on each side, adjusted by sampling rate.";
-  edgePaddingSecondsInput = document.createElement("input");
-  edgePaddingSecondsInput.type = "text";
-  edgePaddingSecondsInput.inputMode = "decimal";
-  edgePaddingSecondsInput.placeholder = String(MIN_EDGE_PADDING_SECONDS);
-  edgePaddingSecondsInput.value = String(MIN_EDGE_PADDING_SECONDS);
-  edgePaddingSecondsInput.className = "p-2 border rounded bg-white w-full";
-  edgePaddingSecondsInput.title = "Reflected edge extension in seconds on each side. Values below 10 seconds are raised to 10.";
-  edgePaddingSecondsInput.oninput = () => {
-    requestUiRedraw({ meta: true });
-  };
-  padRow.appendChild(padLbl);
-  padRow.appendChild(edgePaddingCheckbox);
-  padRow.appendChild(edgePaddingSecondsInput);
-
   const durationNote = document.createElement("div");
   durationNote.className = "text-xs text-slate-600 leading-tight";
   durationNote.textContent = "Rule of thumb: 0.1 Hz needs about 10 s per cycle, 0.01 Hz about 100 s. One cycle is the minimum; several cycles are preferred.";
@@ -1119,7 +1089,6 @@ function buildControls() {
   fDiv.appendChild(lowRow);
   fDiv.appendChild(highRow);
   fDiv.appendChild(dcRow);
-  fDiv.appendChild(padRow);
   fDiv.appendChild(durationNote);
   const notesDiv = document.createElement("div");
   notesDiv.className = "pt-2 flex flex-col space-y-2";
@@ -1166,13 +1135,16 @@ function buildControls() {
 
 function createAccordionSection(title, contentEl, openByDefault) {
   const detail = document.createElement("details");
-  detail.className = "rounded border border-slate-200 p-2";
+  detail.className = "accordion-section";
   detail.open = !!openByDefault;
   const summary = document.createElement("summary");
-  summary.className = "font-semibold cursor-pointer select-none";
+  summary.className = "accordion-summary";
   summary.textContent = title;
+  const body = document.createElement("div");
+  body.className = "accordion-body";
+  body.appendChild(contentEl);
   detail.appendChild(summary);
-  detail.appendChild(contentEl);
+  detail.appendChild(body);
   return detail;
 }
 
@@ -1214,8 +1186,6 @@ function updateFilterToggleButtons() {
   if (highCutSixDbInput) highCutSixDbInput.disabled = !highStageEnabled;
   if (dcRestoreCheckbox) dcRestoreCheckbox.disabled = !anyFilterStageEnabled;
   if (filterEngineSelect) filterEngineSelect.disabled = !anyFilterStageEnabled;
-  if (edgePaddingCheckbox) edgePaddingCheckbox.disabled = !anyFilterStageEnabled;
-  if (edgePaddingSecondsInput) edgePaddingSecondsInput.disabled = !anyFilterStageEnabled || !edgePaddingCheckbox || !edgePaddingCheckbox.checked;
 }
 
 function getSignalDomain() {
@@ -1364,8 +1334,6 @@ function resetProtocolUiOnly() {
   if (highCutSixDbInput) highCutSixDbInput.value = "12.5";
   if (filterEngineSelect) filterEngineSelect.value = "basic_iir";
   if (dcRestoreCheckbox) dcRestoreCheckbox.checked = true;
-  if (edgePaddingCheckbox) edgePaddingCheckbox.checked = true;
-  if (edgePaddingSecondsInput) edgePaddingSecondsInput.value = String(MIN_EDGE_PADDING_SECONDS);
   if (signalDomainSelect) signalDomainSelect.value = "intensity";
   if (dpfWl1Input) dpfWl1Input.value = String(DEFAULT_DPF.wl1);
   if (dpfWl2Input) dpfWl2Input.value = String(DEFAULT_DPF.wl2);
@@ -1876,8 +1844,6 @@ function applyProtocol(protocol) {
   if (highCutSixDbInput) highCutSixDbInput.value = next.filter.highCutSixDbValue;
   if (filterEngineSelect) filterEngineSelect.value = next.filter.filterEngineValue;
   if (dcRestoreCheckbox) dcRestoreCheckbox.checked = next.filter.dcRestore;
-  if (edgePaddingCheckbox) edgePaddingCheckbox.checked = next.filter.edgePaddingEnabled;
-  if (edgePaddingSecondsInput) edgePaddingSecondsInput.value = next.filter.edgePaddingSeconds;
   amplitudePreservationMode = "none";
   if (filterStepCheckbox) filterStepCheckbox.checked = filterStepEnabled;
   if (plotModeSelect) plotModeSelect.value = next.filter.requestedPlotView;
@@ -2693,9 +2659,9 @@ function getRequestedFilterSpec() {
     highpassSixDbHz: filterStepEnabled && lowCutEnabled ? hpSix : null,
     lowpassPassHz: filterStepEnabled && highCutEnabled ? lpPass : null,
     lowpassSixDbHz: filterStepEnabled && highCutEnabled ? lpSix : null,
-    edgePaddingEnabled: filterRequested && !!(edgePaddingCheckbox && edgePaddingCheckbox.checked),
+    edgePaddingEnabled: filterRequested,
     edgePaddingMode: "reflect",
-    edgePaddingSeconds: numberOrNull(edgePaddingSecondsInput ? edgePaddingSecondsInput.value : null),
+    edgePaddingSeconds: MIN_EDGE_PADDING_SECONDS,
     passbandRippleDb: DEFAULT_PASSBAND_RIPPLE_DB,
     stopbandAttenuationDb: DEFAULT_STOPBAND_ATTENUATION_DB
   };

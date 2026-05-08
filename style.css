@@ -414,6 +414,34 @@ body.is-resizing #leftSplitter::before {
   overflow-y: auto;
 }
 
+.accordion-section {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.accordion-summary {
+  display: block;
+  padding: 10px 12px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.accordion-summary::-webkit-details-marker {
+  display: none;
+}
+
+.accordion-body {
+  padding: 0 12px 12px 12px;
+}
+
+.accordion-section:not([open]) .accordion-body {
+  display: none;
+}
+
 body.theme-dark {
   background: #0b1220 !important;
   color: #e2e8f0 !important;
@@ -573,6 +601,15 @@ body.theme-dark .plot-placeholder {
 body.theme-dark .debug-log-panel {
   background: #020617;
   border-color: #334155;
+  color: #e2e8f0;
+}
+
+body.theme-dark .accordion-section {
+  background: #111827;
+  border-color: #334155;
+}
+
+body.theme-dark .accordion-summary {
   color: #e2e8f0;
 }
 
