@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.11";
-const APP_LAST_UPDATED = "2026-05-08 09:46 EDT";
+const APP_VERSION = "0.3.12";
+const APP_LAST_UPDATED = "2026-05-08 10:01 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -94,8 +94,13 @@ const DEFAULT_STOPBAND_ATTENUATION_DB = 6.0;
 const MIN_EDGE_PADDING_SECONDS = 10.0;
 let currentPlotMode = "raw";
 let plotScrollerEl = null;
+let plotModeContextEl = null;
 let plotTabBarEl = null;
 let plotTabButtons = [];
+let pipelineSectionEl = null;
+let filterSectionEl = null;
+let cutSectionEl = null;
+let debugSectionEl = null;
 let logSequence = 0;
 let debugLogEntries = [];
 let debugLogPanelEl = null;
@@ -710,7 +715,6 @@ function buildControls() {
     b.onclick = () => {
       currentWavelength = wl;
       rebuildRadioSelections();
-      if (plotController) plotController.clear();
       redraw();
       renderMeta();
     };
@@ -748,7 +752,6 @@ function buildControls() {
       b.onclick = () => {
         currentChannel = item.index;
         rebuildRadioSelections();
-        if (plotController) plotController.clear();
         redraw();
         renderMeta();
       };
@@ -784,9 +787,6 @@ function buildControls() {
   domainRow.appendChild(domainLbl);
   domainRow.appendChild(signalDomainSelect);
 
-  const flagsRow = document.createElement("div");
-  flagsRow.className = "grid grid-cols-2 gap-2";
-
   const filterMasterRow = document.createElement("label");
   filterMasterRow.className = "inline-flex items-center gap-2 text-sm";
   filterStepCheckbox = document.createElement("input");
@@ -818,9 +818,6 @@ function buildControls() {
   trimMasterRow.appendChild(trimStepCheckbox);
   trimMasterRow.appendChild(document.createTextNode("Enable trim"));
 
-  flagsRow.appendChild(filterMasterRow);
-  flagsRow.appendChild(trimMasterRow);
-
   pipelineSummaryEl = document.createElement("div");
   pipelineSummaryEl.className = "text-xs text-slate-600 leading-tight";
 
@@ -828,13 +825,13 @@ function buildControls() {
   physiologyRow.className = "grid grid-cols-[auto_auto_68px_auto_68px] gap-2 items-center";
   const physiologyLbl = document.createElement("div");
   physiologyLbl.className = "text-xs text-slate-600 font-semibold whitespace-nowrap";
-  physiologyLbl.textContent = "MBLL DPF:";
+  physiologyLbl.textContent = "MBLL DPF (unitless):";
   dpfWl1Input = document.createElement("input");
   dpfWl1Input.type = "text";
   dpfWl1Input.inputMode = "decimal";
   dpfWl1Input.value = String(DEFAULT_DPF.wl1);
   dpfWl1Input.className = "p-2 border rounded bg-white w-full text-sm";
-  dpfWl1Input.title = "Differential pathlength factor for wavelength 1.";
+  dpfWl1Input.title = "Differential pathlength factor (unitless) for wavelength 1. This is not channel distance.";
   dpfWl1Input.oninput = () => {
     redraw();
     renderMeta();
@@ -844,7 +841,7 @@ function buildControls() {
   dpfWl2Input.inputMode = "decimal";
   dpfWl2Input.value = String(DEFAULT_DPF.wl2);
   dpfWl2Input.className = "p-2 border rounded bg-white w-full text-sm";
-  dpfWl2Input.title = "Differential pathlength factor for wavelength 2.";
+  dpfWl2Input.title = "Differential pathlength factor (unitless) for wavelength 2. This is not channel distance.";
   dpfWl2Input.oninput = () => {
     redraw();
     renderMeta();
@@ -863,16 +860,16 @@ function buildControls() {
 
   const physiologyNote = document.createElement("div");
   physiologyNote.className = "text-xs text-slate-600 leading-tight";
-  physiologyNote.textContent = "Derived physiology uses delta OD at both wavelengths and channel distance from the NIRx header to estimate relative HbO/HbR/HbT.";
+  physiologyNote.textContent = "DPF is a unitless optical pathlength factor. Channel distance (mm) is read separately from the NIRx header for MBLL.";
 
   pipelineDiv.appendChild(domainRow);
-  pipelineDiv.appendChild(flagsRow);
   pipelineDiv.appendChild(physiologyRow);
   pipelineDiv.appendChild(physiologyNote);
   pipelineDiv.appendChild(pipelineSummaryEl);
 
   const exDiv = document.createElement("div");
   exDiv.className = "pt-2 flex flex-col space-y-2";
+  exDiv.appendChild(trimMasterRow);
 
   exclusionTable = document.createElement("textarea");
   exclusionTable.rows = 6;
@@ -884,6 +881,7 @@ function buildControls() {
 
   const fDiv = document.createElement("div");
   fDiv.className = "pt-2 flex flex-col space-y-2";
+  fDiv.appendChild(filterMasterRow);
 
   lowCutInput = document.createElement("input");
   lowCutInput.type = "text";
@@ -1020,7 +1018,7 @@ function buildControls() {
   viewCard.className = "rounded border border-slate-200 p-3 flex flex-col space-y-2";
   const layoutNote = document.createElement("div");
   layoutNote.className = "text-xs text-slate-600 leading-tight";
-  layoutNote.textContent = "Layout: single plot with tabs. Raw, Trimmed, Filtered, HbO, HbR, and HbT share the current time window.";
+  layoutNote.textContent = "Layout: single plot with tabs. Raw, Filtered, Cut, HbO, HbR, and HbT share the current time window.";
   viewCard.appendChild(layoutNote);
 
   const windowRow = document.createElement("div");
@@ -1063,7 +1061,6 @@ function buildControls() {
   const accordionStack = document.createElement("div");
   accordionStack.className = "flex flex-col gap-2";
   accordionStack.appendChild(createAccordionSection("Import", importDiv, true));
-  accordionStack.appendChild(createAccordionSection("Debug Log", debugDiv, true));
   accordionStack.appendChild(createAccordionSection("Actions", actionsDiv, false));
   accordionStack.appendChild(createAccordionSection("Protocol", protocolDiv, false));
   accordionStack.appendChild(createAccordionSection("Plot View", viewCard, false));
@@ -1079,11 +1076,20 @@ function buildControls() {
     accordionStack.appendChild(createAccordionSection("Events", eventsContentEl, false));
     accordionStack.appendChild(createAccordionSection("Wavelength", wlDiv, true));
     accordionStack.appendChild(createAccordionSection("Channel", chDiv, true));
-    accordionStack.appendChild(createAccordionSection("Pipeline", pipelineDiv, false));
-    accordionStack.appendChild(createAccordionSection("Filter", fDiv, true));
-    accordionStack.appendChild(createAccordionSection("Cut Intervals", exDiv, false));
+    pipelineSectionEl = createAccordionSection("Pipeline", pipelineDiv, false);
+    filterSectionEl = createAccordionSection("Filter", fDiv, true);
+    cutSectionEl = createAccordionSection("Cut Intervals", exDiv, false);
+    accordionStack.appendChild(pipelineSectionEl);
+    accordionStack.appendChild(filterSectionEl);
+    accordionStack.appendChild(cutSectionEl);
     accordionStack.appendChild(createAccordionSection("Notes", notesDiv, false));
+  } else {
+    pipelineSectionEl = null;
+    filterSectionEl = null;
+    cutSectionEl = null;
   }
+  debugSectionEl = createAccordionSection("Debug Log", debugDiv, false);
+  accordionStack.appendChild(debugSectionEl);
   controls.appendChild(accordionStack);
   rebuildRadioSelections();
   updateFilterToggleButtons();
@@ -1153,7 +1159,7 @@ function getSignalDomain() {
 function updatePipelineSummary() {
   if (!pipelineSummaryEl) return;
   const filterLabel = filterStepEnabled ? "Filter on" : "Filter off";
-  const trimLabel = trimStepEnabled ? "Trim on" : "Trim off";
+  const trimLabel = trimStepEnabled ? "Cut on" : "Cut off";
   pipelineSummaryEl.textContent = "Intensity -> Delta OD -> " + filterLabel + " -> " + trimLabel + " -> MBLL Hb";
 }
 
@@ -1394,7 +1400,7 @@ function redraw() {
 
     if (currentPlotMode === "trimmed") {
       const trimmedRangeLabel = formatWindowRangeLabel(trimmedWindowed.startSeconds, trimmedWindowed.series.length / samplingRate);
-      activePlotHeader = wlLabel + " " + chLabel + " Trimmed (" + (trimStepEnabled ? "trim on" : "trim off") + ", " + trimmedRangeLabel + ") | " + formatStats(computeStats(trimmedWindowed.series));
+      activePlotHeader = wlLabel + " " + chLabel + " Cut (" + (trimStepEnabled ? "cut on" : "cut off") + ", " + trimmedRangeLabel + ") | " + formatStats(computeStats(trimmedWindowed.series));
       activePlotModel = buildPlotRenderModel(trimmedWindowed, trimmedDisplay, {
         yLabel: signalDomain === "delta_od" ? "Delta OD" : "Intensity (a.u.)",
         stroke: "#475569"
@@ -1543,6 +1549,7 @@ function redraw() {
     if (activePlotModel) plotController.setModel(activePlotModel);
     else plotController.clear();
   }
+  updatePlotModeControls();
 
   renderStageSummary(stageSummaryVisible ? stageSummaryModel : null);
   debugLog("redraw:end", {
@@ -2449,8 +2456,8 @@ function rebuildRadioSelections() {
 function initPlotLayout() {
   const tabs = [
     { value: "raw", label: "Raw" },
-    { value: "trimmed", label: "Trimmed" },
     { value: "filtered", label: "Filtered" },
+    { value: "trimmed", label: "Cut" },
     { value: "hbo", label: "HbO" },
     { value: "hbr", label: "HbR" },
     { value: "hbt", label: "HbT" }
@@ -2497,6 +2504,9 @@ function initPlotLayout() {
 }
 
 function createPlotScroller() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "plot-scroller-wrap";
+
   const scroller = document.createElement("div");
   scroller.className = "plot-scroller";
 
@@ -2520,7 +2530,12 @@ function createPlotScroller() {
 
   scroller.appendChild(viewOffsetSlider);
   scroller.appendChild(viewOffsetSummaryEl);
-  return scroller;
+  plotModeContextEl = document.createElement("div");
+  plotModeContextEl.className = "plot-mode-controls";
+  wrapper.appendChild(scroller);
+  wrapper.appendChild(plotModeContextEl);
+  updatePlotModeControls();
+  return wrapper;
 }
 
 function computeStats(series) {
@@ -2776,7 +2791,59 @@ function applyPlotMode() {
   if (plotScrollerHost) {
     plotScrollerHost.style.display = "";
   }
+  updatePlotModeControls();
   rebuildRadioSelections();
+}
+
+function setToggleFromContext(checkbox) {
+  if (!checkbox) return;
+  checkbox.checked = !checkbox.checked;
+  if (typeof checkbox.onchange === "function") checkbox.onchange();
+}
+
+function openControlSection(sectionEl) {
+  if (!sectionEl) return;
+  sectionEl.open = true;
+  sectionEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function addContextButton(host, label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "plot-mode-control-btn";
+  button.textContent = label;
+  button.onclick = onClick;
+  host.appendChild(button);
+}
+
+function updatePlotModeControls() {
+  if (!plotModeContextEl) return;
+  plotModeContextEl.textContent = "";
+
+  const info = document.createElement("div");
+  info.className = "plot-mode-controls-note";
+  const actions = document.createElement("div");
+  actions.className = "plot-mode-controls-actions";
+
+  if (currentPlotMode === "filtered") {
+    info.textContent = "Filtered view: filter then cut.";
+    addContextButton(actions, filterStepEnabled ? "Disable Filter" : "Enable Filter", () => setToggleFromContext(filterStepCheckbox));
+    addContextButton(actions, trimStepEnabled ? "Disable Cut" : "Enable Cut", () => setToggleFromContext(trimStepCheckbox));
+    addContextButton(actions, "Open Filter Controls", () => openControlSection(filterSectionEl));
+  } else if (currentPlotMode === "trimmed") {
+    info.textContent = "Cut view: intervals removed from the signal.";
+    addContextButton(actions, trimStepEnabled ? "Disable Cut" : "Enable Cut", () => setToggleFromContext(trimStepCheckbox));
+    addContextButton(actions, "Open Cut Intervals", () => openControlSection(cutSectionEl));
+  } else if (isHemoglobinPlotMode(currentPlotMode)) {
+    info.textContent = "Hb views use both wavelengths and MBLL (DPF is unitless, not channel distance).";
+    addContextButton(actions, "Open Pipeline", () => openControlSection(pipelineSectionEl));
+  } else {
+    info.textContent = "Raw view: choose signal domain and channel/wavelength controls.";
+    addContextButton(actions, "Open Pipeline", () => openControlSection(pipelineSectionEl));
+  }
+
+  plotModeContextEl.appendChild(info);
+  plotModeContextEl.appendChild(actions);
 }
 
 function isDcRestoreEnabled() {

@@ -363,6 +363,12 @@ body { overflow: hidden; }
   color: #475569;
 }
 
+.plot-scroller-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .plot-time-slider {
   width: 100%;
 }
@@ -373,6 +379,48 @@ body { overflow: hidden; }
   font-weight: 650;
   text-align: right;
   white-space: nowrap;
+}
+
+.plot-mode-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+}
+
+.plot-mode-controls-note {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.plot-mode-controls-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.plot-mode-control-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.plot-mode-control-btn:hover {
+  background: #e2e8f0;
 }
 
 .debug-log-panel {
@@ -516,6 +564,25 @@ body.theme-dark .plot-scroller {
   background: #111827;
   border-color: #334155;
   color: #cbd5e1;
+}
+
+body.theme-dark .plot-mode-controls {
+  background: #111827;
+  border-color: #334155;
+}
+
+body.theme-dark .plot-mode-controls-note {
+  color: #94a3b8;
+}
+
+body.theme-dark .plot-mode-control-btn {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+body.theme-dark .plot-mode-control-btn:hover {
+  background: #1e293b;
 }
 
 body.theme-dark .plot-tab-btn {
