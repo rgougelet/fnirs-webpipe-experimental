@@ -196,7 +196,7 @@
           edgePaddingSeconds: deps.minEdgePaddingSeconds,
           passbandRippleDb: deps.defaultPassbandRippleDb,
           stopbandAttenuationDb: deps.defaultStopbandAttenuationDb,
-          implementation: "rjg_sos",
+          implementation: "basic_iir",
           dcRestore: true,
           plotView: "raw",
           amplitudePreservation: "none"
@@ -256,7 +256,7 @@
       filterStep.stopbandAttenuationDb = deps.numberOrNull(filterStep.stopbandAttenuationDb) === null
         ? deps.defaultStopbandAttenuationDb
         : Number(filterStep.stopbandAttenuationDb);
-      filterStep.implementation = "rjg_sos";
+      filterStep.implementation = "basic_iir";
       filterStep.dcRestore = typeof filterStep.dcRestore === "boolean" ? filterStep.dcRestore : true;
       filterStep.plotView = deps.normalizePlotMode(filterStep.plotView);
       filterStep.amplitudePreservation = "none";
@@ -343,7 +343,7 @@
             ? deps.minEdgePaddingSeconds
             : Math.max(deps.minEdgePaddingSeconds, Number(filterStep.edgePaddingSeconds))
         ),
-        filterEngineValue: "rjg_sos",
+        filterEngineValue: "basic_iir",
         requestedPlotView: requestedPlotView
       } : {
         filterStepEnabled: true,
@@ -356,7 +356,7 @@
         dcRestore: true,
         edgePaddingEnabled: true,
         edgePaddingSeconds: String(deps.minEdgePaddingSeconds),
-        filterEngineValue: "rjg_sos",
+        filterEngineValue: "basic_iir",
         requestedPlotView: requestedPlotView
       }
     };

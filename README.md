@@ -146,6 +146,7 @@ npm run ui:install
 
 ## Potential Features (Deferred)
 - Add contextual quick controls under the plot scroller (mode-aware actions). Deferred until redraw stability and performance are fully hardened.
+- Reintroduce advanced SOS auto-order filtering as an optional engine. It is currently deprecated in favor of a fixed-order basic IIR path due to runtime freezes.
 
 ## Status
 Active development.

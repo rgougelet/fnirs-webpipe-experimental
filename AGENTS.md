@@ -58,6 +58,12 @@ Readable file policy:
 - For architecture work, prefer reading full files rather than reasoning from snippets.
 - `app.js` is the current structural outlier and should be paid down incrementally rather than expanded casually.
 
+Filter stability policy:
+
+- The active filter engine is fixed-order basic IIR (`basic_iir`).
+- Legacy SOS auto-order engine (`rjg_sos`) is deprecated for now due to runtime freezes on interactive redraw.
+- Do not re-enable SOS as default without explicit user request and a dedicated stability pass.
+
 Wrapper policy:
 
 - Prefer raw `git` for ad hoc inspection and branch surgery.

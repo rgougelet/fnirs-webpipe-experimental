@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.14";
-const APP_LAST_UPDATED = "2026-05-08 10:19 EDT";
+const APP_VERSION = "0.3.15";
+const APP_LAST_UPDATED = "2026-05-08 10:25 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -1271,7 +1271,7 @@ function resetProtocolUiOnly() {
   if (lowCutSixDbInput) lowCutSixDbInput.value = "0.05";
   if (highCutInput) highCutInput.value = "10.0";
   if (highCutSixDbInput) highCutSixDbInput.value = "12.5";
-  if (filterEngineSelect) filterEngineSelect.value = "rjg_sos";
+  if (filterEngineSelect) filterEngineSelect.value = "basic_iir";
   if (dcRestoreCheckbox) dcRestoreCheckbox.checked = true;
   if (edgePaddingCheckbox) edgePaddingCheckbox.checked = true;
   if (edgePaddingSecondsInput) edgePaddingSecondsInput.value = String(MIN_EDGE_PADDING_SECONDS);
@@ -2741,8 +2741,8 @@ function validateFilterSpec(fs, spec) {
 }
 
 function getFilterEngine() {
-  if (!filterEngineSelect) return "rjg_sos";
-  return "rjg_sos";
+  if (!filterEngineSelect) return "basic_iir";
+  return "basic_iir";
 }
 
 function applyPlotMode() {
