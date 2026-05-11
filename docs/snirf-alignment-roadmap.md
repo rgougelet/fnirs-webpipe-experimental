@@ -34,14 +34,33 @@ This note records the first concrete findings from the bundled Homer3 references
 
 ## Immediate next implementation steps
 
-1. Add a browser-readable HDF5 layer for `.snirf`.
-2. Map SNIRF `dataTimeSeries`, `time`, `measurementList`, `probe`, and `stim` into the same normalized dataset shape used by NIRx import.
+1. Add a browser-readable HDF5 layer for `.snirf`. (done in app via vendored `jsfive`)
+2. Map SNIRF `dataTimeSeries`, `time`, `measurementList`, `probe`, and `stim` into the same normalized dataset shape used by NIRx import. (first pass done for CW intensity)
 3. Preserve Homer3 semantics where practical:
    - intensity as the primary acquisition domain
    - wavelength-aware measurement list handling
    - source-detector pair geometry from probe metadata
    - event/stim import from SNIRF stim groups
 4. Only after raw intensity SNIRF is stable, add compatibility for Homer-style MATLAB `.nirs` files if still needed.
+
+## Current SNIRF wiring status (2026-05-11)
+
+- `.snirf` files now route through a dedicated parser path instead of a placeholder message.
+- Parser module: `snirf.js`
+  - HDF5 backend: `vendor/jsfive.hdf5.js`
+- Current extraction path:
+  - `/nirs*/data*/dataTimeSeries`
+  - `/nirs*/data*/time`
+  - `/nirs*/data*/measurementList*` (with fallback support for vectorized `measurementLists`)
+  - `/nirs*/probe/wavelengths`
+  - `/nirs*/probe/sourcePos2D|sourcePos3D`
+  - `/nirs*/probe/detectorPos2D|detectorPos3D`
+  - `/nirs*/stim*/data` and `/nirs*/stim*/name`
+- Current behavior:
+  - selects first two available wavelengths and maps channels by shared source-detector pairs
+  - imports stim groups as events (deduplicated by sample/code/label)
+  - computes channel distances from probe positions when available
+  - keeps `.nirs` (MATLAB/Homer legacy) as unsupported for now
 
 ## First small rule for future work
 

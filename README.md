@@ -79,7 +79,9 @@ Sample rate still matters for the upper end:
 - Upper filter edges should stay comfortably below Nyquist.
 
 ## Usage
-Open the web app and load a NIRx data folder as a zip file.
+Open the web app and load either:
+- a NIRx dataset (`.zip`, or `.hdr/.wl1/.wl2` with optional `.evt`/`probeInfo.mat`)
+- a SNIRF file (`.snirf`, first-pass CW intensity support)
 
 ## Local UI workflow
 For faster visual iteration, use the npm wrappers rather than calling Playwright or the capture script directly. This keeps approvals reusable and avoids one-off Chromium execution prompts.

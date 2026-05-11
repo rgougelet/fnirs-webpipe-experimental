@@ -60,6 +60,24 @@ This file tracks nontrivial third-party code adaptations/reuse.
 
 ---
 
+### jsfive
+- Source: `https://github.com/usnistgov/jsfive` and local install snapshot `node_modules/jsfive`
+- Version: `0.4.0`
+- License: `public domain` (license note in `LICENSE.txt`)
+- Usage mode: `direct_reuse`
+- Files in this repo:
+  - `vendor/jsfive.hdf5.js`
+  - `vendor/jsfive.LICENSE.txt`
+- Summary of reused/adapted parts:
+  - Unmodified browser distribution file used as the HDF5 reader backend for SNIRF import
+- Modifications made:
+  - None; copied verbatim into `vendor/`
+- Required notices:
+  - Keep `vendor/jsfive.LICENSE.txt` with the vendored file
+  - Keep this notice entry
+
+---
+
 ### Homer3 MBLL/OD reference methods
 - Source: `references/unpacked/BUNPC-Homer3-1.87.0.0`
 - Version: `BUNPC-Homer3-1.87.0.0` ZIP snapshot imported on 2026-03-06

@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.26";
-const APP_LAST_UPDATED = "2026-05-11 14:08 EDT";
+const APP_VERSION = "0.3.27";
+const APP_LAST_UPDATED = "2026-05-11 14:21 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -360,7 +360,7 @@ async function loadSelectedFiles(fileList, options) {
     inputTypeLabel = "snirf";
     datasetLabel = stem(files[0].name);
     debugLog("handleInput:mode", { inputTypeLabel, datasetLabel });
-    showUnsupportedSnirfMessage(files[0].name);
+    await loadSnirf(files[0]);
   } else if (files.length === 1 && isHomerNirsFileName(files[0].name)) {
     inputTypeLabel = "homer-nirs";
     datasetLabel = stem(files[0].name);
@@ -443,9 +443,8 @@ function isHomerNirsFileName(name) {
 
 function showUnsupportedSnirfMessage(name) {
   metaDiv.textContent =
-    "SNIRF import is the next format target, but it is not wired in yet. " +
-    "The bundled Homer3 references use SnirfClass and HDF5-backed .snirf files, " +
-    "so the next implementation step is adding a browser HDF5 reader and mapping SNIRF measurement lists into this app's channel model. " +
+    "SNIRF parser is unavailable in this build. " +
+    "This app expects a browser HDF5 parser bundle before SNIRF files can be loaded. " +
     "Selected file: " + name;
 }
 
@@ -612,6 +611,99 @@ async function loadZip(zipFile) {
     evt: evt ? { name: evt.name, readText: () => evt.async("text") } : null,
     probeMat: probeMat ? { name: probeMat.name, readArrayBuffer: () => probeMat.async("arraybuffer") } : null
   });
+}
+
+async function loadSnirf(snirfFile) {
+  resetAllState();
+  debugLog("loadSnirf:start", {
+    name: snirfFile.name,
+    sizeBytes: snirfFile.size
+  });
+
+  try {
+    if (!window.fnirsSnirf || typeof window.fnirsSnirf.parseSnirfArrayBuffer !== "function") {
+      showUnsupportedSnirfMessage(snirfFile.name);
+      debugLog("loadSnirf:parserUnavailable", {
+        hasSnirfApi: !!window.fnirsSnirf
+      });
+      return;
+    }
+
+    const loadStartMs = performance.now();
+    const arrayBuffer = await snirfFile.arrayBuffer();
+    debugLog("loadSnirf:arrayBufferRead", {
+      bytes: arrayBuffer.byteLength
+    });
+
+    const parsed = window.fnirsSnirf.parseSnirfArrayBuffer(arrayBuffer, { name: snirfFile.name });
+    samplingRate = parsed.samplingRate;
+    wavelengthsNm = Array.isArray(parsed.wavelengthsNm) && parsed.wavelengthsNm.length >= 2
+      ? parsed.wavelengthsNm.slice(0, 2)
+      : [760, 850];
+    data.wl1 = parsed.wl1;
+    data.wl2 = parsed.wl2;
+    events = Array.isArray(parsed.events) ? parsed.events : [];
+    channelLabels = Array.isArray(parsed.channelLabels) && parsed.channelLabels.length
+      ? parsed.channelLabels.slice()
+      : buildDefaultChannelLabels(data.wl1 && data.wl1[0] ? data.wl1[0].length : 0);
+    channelLabelSource = parsed.channelLabelSource || "snirf measurementList";
+    channelDistancesMm = normalizeNumericList(
+      parsed.channelDistancesMm,
+      data.wl1 && data.wl1[0] ? data.wl1[0].length : 0,
+      DEFAULT_CHANNEL_DISTANCE_MM
+    );
+
+    const snirfSourceLabel = snirfFile.name + " (snirf)";
+    sources.hdr = snirfSourceLabel;
+    sources.wl1 = snirfSourceLabel;
+    sources.wl2 = snirfSourceLabel;
+    sources.evt = events.length ? snirfSourceLabel : null;
+    sources.probeMat = snirfSourceLabel;
+    sources.samplingRateFrom = snirfSourceLabel;
+    sources.eventsFrom = events.length ? snirfSourceLabel : "none";
+    sources.channelLabelsFrom = snirfSourceLabel;
+
+    debugLog("loadSnirf:parsed", {
+      samplingRate,
+      wavelengthsNm,
+      wl1: summarizeMatrix(data.wl1),
+      wl2: summarizeMatrix(data.wl2),
+      eventCount: events.length,
+      channelLabelSource,
+      parserMeta: parsed.meta || null
+    });
+
+    const controlsStartMs = performance.now();
+    buildControls();
+    debugLog("loadSnirf:buildControls", {
+      ms: Number((performance.now() - controlsStartMs).toFixed(1))
+    });
+    controls.classList.remove("hidden");
+
+    if (pendingProtocol) {
+      applyProtocol(pendingProtocol);
+      pendingProtocol = null;
+    }
+
+    const metaStartMs = performance.now();
+    renderMeta();
+    debugLog("loadSnirf:renderMeta", {
+      ms: Number((performance.now() - metaStartMs).toFixed(1))
+    });
+    const redrawStartMs = performance.now();
+    redraw();
+    debugLog("loadSnirf:redraw", {
+      ms: Number((performance.now() - redrawStartMs).toFixed(1))
+    });
+    debugLog("loadSnirf:complete", {
+      datasetLabel,
+      elapsedMs: Number((performance.now() - loadStartMs).toFixed(1))
+    });
+  } catch (err) {
+    const message = err && err.message ? err.message : String(err);
+    metaDiv.textContent = "Failed to load SNIRF: " + message;
+    debugError("loadSnirf:failed", err);
+  }
 }
 
 /* ================= Loading NIRx data ================= */
@@ -904,7 +996,7 @@ function buildControls() {
   importDiv.className = "pt-2 flex flex-col gap-2";
   const importHelp = document.createElement("div");
   importHelp.className = "text-xs text-slate-600";
-  importHelp.textContent = "Primary import path: load a NIRx ZIP or folder set.";
+  importHelp.textContent = "Primary import path: load a NIRx ZIP/folder set or a SNIRF file.";
   const importSubHelp = document.createElement("div");
   importSubHelp.className = "text-xs text-slate-600 leading-tight";
   importSubHelp.textContent = "Use this for normal analysis runs. Bundled samples are listed separately below.";
