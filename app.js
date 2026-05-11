@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.24";
-const APP_LAST_UPDATED = "2026-05-08 14:14 EDT";
+const APP_VERSION = "0.3.25";
+const APP_LAST_UPDATED = "2026-05-11 13:45 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -109,6 +109,22 @@ const DEFAULT_DPF = {
   wl1: 6.0,
   wl2: 6.0
 };
+const BUNDLED_SAMPLE_FILES = [
+  {
+    id: "nirx_demo_zip",
+    label: "NIRx demo ZIP",
+    path: "samples/nirx-demo-2026-02-18_002.zip",
+    kind: "zip",
+    sizeBytes: 632975
+  },
+  {
+    id: "homer3_test_snirf",
+    label: "Homer3 test SNIRF",
+    path: "samples/homer3-test.snirf",
+    kind: "snirf",
+    sizeBytes: 7203050
+  }
+];
 const protocolApi = window.fnirsProtocol;
 if (!protocolApi) {
   throw new Error("fnirsProtocol API missing. Ensure protocol.js loads before app.js.");
@@ -300,13 +316,31 @@ function updateDebugLogPanel() {
 /* ================= Input ================= */
 
 async function handleInput(evt) {
+  const fileList = evt && evt.target ? evt.target.files : null;
+  await loadSelectedFiles(fileList, { source: "user-input" });
+}
+
+async function loadSelectedFiles(fileList, options) {
   resetUiOnly();
   clearDebugLog();
-  const files = Array.from(evt.target.files);
+  const files = Array.from(fileList || []);
   debugLog("handleInput:selectedFiles", files.map(f => ({
     name: f.name,
     sizeBytes: f.size
   })));
+  if (options && options.source && options.source !== "user-input") {
+    debugLog("handleInput:source", {
+      source: options.source,
+      sampleId: options.sampleId || null,
+      samplePath: options.samplePath || null
+    });
+  }
+
+  if (!files.length) {
+    metaDiv.textContent = "No files selected.";
+    return;
+  }
+  input.value = "";
 
   if (files.length === 1 && files[0].name.toLowerCase().endsWith(".zip")) {
     inputTypeLabel = "zip";
@@ -329,6 +363,63 @@ async function handleInput(evt) {
     datasetLabel = hdr ? stem(hdr.name) : (files[0] ? stem(files[0].name) : "unknown-dataset");
     debugLog("handleInput:mode", { inputTypeLabel, datasetLabel });
     await loadFiles(files);
+  }
+}
+
+function formatSampleSize(bytes) {
+  const numericBytes = Number(bytes);
+  if (!Number.isFinite(numericBytes) || numericBytes < 0) return "?";
+  if (numericBytes < 1024) return Math.round(numericBytes) + " B";
+  if (numericBytes < 1024 * 1024) return (numericBytes / 1024).toFixed(1) + " KB";
+  return (numericBytes / (1024 * 1024)).toFixed(2) + " MB";
+}
+
+function findBundledSampleById(sampleId) {
+  return BUNDLED_SAMPLE_FILES.find(sample => sample.id === sampleId) || null;
+}
+
+async function loadBundledSampleById(sampleId) {
+  const sample = findBundledSampleById(sampleId);
+  if (!sample) {
+    metaDiv.textContent = "Bundled sample not found: " + sampleId;
+    return;
+  }
+
+  resetUiOnly();
+  clearDebugLog();
+  debugLog("loadSample:start", {
+    sampleId: sample.id,
+    path: sample.path,
+    kind: sample.kind,
+    declaredSizeBytes: sample.sizeBytes
+  });
+
+  try {
+    const response = await fetch(sample.path + "?v=" + encodeURIComponent(APP_VERSION), { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status + " while loading " + sample.path);
+    }
+    const blob = await response.blob();
+    const filename = basename(sample.path);
+    const file = new File([blob], filename, {
+      type: blob.type || "application/octet-stream",
+      lastModified: Date.now()
+    });
+    debugLog("loadSample:fetched", {
+      sampleId: sample.id,
+      name: file.name,
+      sizeBytes: file.size,
+      contentType: response.headers.get("content-type") || null
+    });
+    await loadSelectedFiles([file], {
+      source: "bundled-sample",
+      sampleId: sample.id,
+      samplePath: sample.path
+    });
+  } catch (err) {
+    const message = err && err.message ? err.message : String(err);
+    metaDiv.textContent = "Failed to load bundled sample: " + message;
+    debugError("loadSample:failed", err);
   }
 }
 
@@ -804,10 +895,47 @@ function buildControls() {
   const importHelp = document.createElement("div");
   importHelp.className = "text-xs text-slate-600";
   importHelp.textContent = "Load a NIRx ZIP or folder set.";
+  const sampleRow = document.createElement("div");
+  sampleRow.className = "grid grid-cols-[1fr_auto] gap-2 items-center";
+  const sampleSelect = document.createElement("select");
+  sampleSelect.className = "p-2 border rounded bg-white w-full text-sm";
+  const samplePlaceholder = document.createElement("option");
+  samplePlaceholder.value = "";
+  samplePlaceholder.textContent = "Bundled sample files...";
+  sampleSelect.appendChild(samplePlaceholder);
+  BUNDLED_SAMPLE_FILES.forEach(sample => {
+    const option = document.createElement("option");
+    option.value = sample.id;
+    option.textContent = sample.label + " (" + formatSampleSize(sample.sizeBytes) + ")";
+    sampleSelect.appendChild(option);
+  });
+  const loadSampleBtn = document.createElement("button");
+  loadSampleBtn.type = "button";
+  loadSampleBtn.className = "btn";
+  loadSampleBtn.textContent = "Load sample";
+  loadSampleBtn.onclick = async () => {
+    if (!sampleSelect.value) return;
+    const previousLabel = loadSampleBtn.textContent;
+    loadSampleBtn.disabled = true;
+    loadSampleBtn.textContent = "Loading...";
+    try {
+      await loadBundledSampleById(sampleSelect.value);
+    } finally {
+      loadSampleBtn.disabled = false;
+      loadSampleBtn.textContent = previousLabel;
+    }
+  };
+  sampleRow.appendChild(sampleSelect);
+  sampleRow.appendChild(loadSampleBtn);
+  const sampleHelp = document.createElement("div");
+  sampleHelp.className = "text-xs text-slate-600 leading-tight";
+  sampleHelp.textContent = "Bundled demo files are served from /samples and remain under 10 MB for portable distribution tests.";
   metaDiv.className = "text-sm text-slate-600";
   input.className = "block w-full p-2 border rounded bg-white";
   importDiv.appendChild(input);
   importDiv.appendChild(importHelp);
+  importDiv.appendChild(sampleRow);
+  importDiv.appendChild(sampleHelp);
   importDiv.appendChild(metaDiv);
 
   const debugDiv = document.createElement("div");
