@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.25";
-const APP_LAST_UPDATED = "2026-05-11 13:45 EDT";
+const APP_VERSION = "0.3.26";
+const APP_LAST_UPDATED = "2026-05-11 14:08 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -317,7 +317,14 @@ function updateDebugLogPanel() {
 
 async function handleInput(evt) {
   const fileList = evt && evt.target ? evt.target.files : null;
-  await loadSelectedFiles(fileList, { source: "user-input" });
+  await loadStandardInputFiles(fileList);
+}
+
+async function loadStandardInputFiles(fileList) {
+  await loadSelectedFiles(fileList, {
+    source: "user-input",
+    route: "standard-import"
+  });
 }
 
 async function loadSelectedFiles(fileList, options) {
@@ -340,7 +347,9 @@ async function loadSelectedFiles(fileList, options) {
     metaDiv.textContent = "No files selected.";
     return;
   }
-  input.value = "";
+  if (!options || options.source === "user-input") {
+    input.value = "";
+  }
 
   if (files.length === 1 && files[0].name.toLowerCase().endsWith(".zip")) {
     inputTypeLabel = "zip";
@@ -414,7 +423,8 @@ async function loadBundledSampleById(sampleId) {
     await loadSelectedFiles([file], {
       source: "bundled-sample",
       sampleId: sample.id,
-      samplePath: sample.path
+      samplePath: sample.path,
+      route: "bundled-sample"
     });
   } catch (err) {
     const message = err && err.message ? err.message : String(err);
@@ -894,14 +904,22 @@ function buildControls() {
   importDiv.className = "pt-2 flex flex-col gap-2";
   const importHelp = document.createElement("div");
   importHelp.className = "text-xs text-slate-600";
-  importHelp.textContent = "Load a NIRx ZIP or folder set.";
+  importHelp.textContent = "Primary import path: load a NIRx ZIP or folder set.";
+  const importSubHelp = document.createElement("div");
+  importSubHelp.className = "text-xs text-slate-600 leading-tight";
+  importSubHelp.textContent = "Use this for normal analysis runs. Bundled samples are listed separately below.";
+  const sampleDiv = document.createElement("div");
+  sampleDiv.className = "sample-loader-panel";
+  const sampleLead = document.createElement("div");
+  sampleLead.className = "sample-loader-lead";
+  sampleLead.textContent = "Bundled sample files (demo/testing)";
   const sampleRow = document.createElement("div");
   sampleRow.className = "grid grid-cols-[1fr_auto] gap-2 items-center";
   const sampleSelect = document.createElement("select");
-  sampleSelect.className = "p-2 border rounded bg-white w-full text-sm";
+  sampleSelect.className = "sample-loader-select p-2 border rounded bg-white w-full text-sm";
   const samplePlaceholder = document.createElement("option");
   samplePlaceholder.value = "";
-  samplePlaceholder.textContent = "Bundled sample files...";
+  samplePlaceholder.textContent = "Choose bundled sample...";
   sampleSelect.appendChild(samplePlaceholder);
   BUNDLED_SAMPLE_FILES.forEach(sample => {
     const option = document.createElement("option");
@@ -911,7 +929,7 @@ function buildControls() {
   });
   const loadSampleBtn = document.createElement("button");
   loadSampleBtn.type = "button";
-  loadSampleBtn.className = "btn";
+  loadSampleBtn.className = "btn sample-loader-btn";
   loadSampleBtn.textContent = "Load sample";
   loadSampleBtn.onclick = async () => {
     if (!sampleSelect.value) return;
@@ -928,14 +946,16 @@ function buildControls() {
   sampleRow.appendChild(sampleSelect);
   sampleRow.appendChild(loadSampleBtn);
   const sampleHelp = document.createElement("div");
-  sampleHelp.className = "text-xs text-slate-600 leading-tight";
-  sampleHelp.textContent = "Bundled demo files are served from /samples and remain under 10 MB for portable distribution tests.";
+  sampleHelp.className = "sample-loader-help";
+  sampleHelp.textContent = "Served from /samples and kept under 10 MB for portable distribution tests.";
+  sampleDiv.appendChild(sampleLead);
+  sampleDiv.appendChild(sampleRow);
+  sampleDiv.appendChild(sampleHelp);
   metaDiv.className = "text-sm text-slate-600";
   input.className = "block w-full p-2 border rounded bg-white";
   importDiv.appendChild(input);
   importDiv.appendChild(importHelp);
-  importDiv.appendChild(sampleRow);
-  importDiv.appendChild(sampleHelp);
+  importDiv.appendChild(importSubHelp);
   importDiv.appendChild(metaDiv);
 
   const debugDiv = document.createElement("div");
@@ -1266,6 +1286,7 @@ function buildControls() {
   const accordionStack = document.createElement("div");
   accordionStack.className = "flex flex-col gap-2";
   accordionStack.appendChild(createAccordionSection("Import", importDiv, true));
+  accordionStack.appendChild(createAccordionSection("Bundled Samples (Optional)", sampleDiv, false, "accordion-section-low-priority"));
   accordionStack.appendChild(createAccordionSection("Actions", actionsDiv, false));
   accordionStack.appendChild(createAccordionSection("Protocol", protocolDiv, false));
   accordionStack.appendChild(createAccordionSection("Plot View", viewCard, false));
@@ -1294,9 +1315,9 @@ function buildControls() {
   updateViewNavigationUi(getReferenceDurationSeconds());
 }
 
-function createAccordionSection(title, contentEl, openByDefault) {
+function createAccordionSection(title, contentEl, openByDefault, extraClass) {
   const detail = document.createElement("details");
-  detail.className = "accordion-section";
+  detail.className = extraClass ? "accordion-section " + extraClass : "accordion-section";
   detail.open = !!openByDefault;
   const summary = document.createElement("summary");
   summary.className = "accordion-summary";

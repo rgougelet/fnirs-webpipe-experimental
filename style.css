@@ -414,11 +414,48 @@ body.is-resizing #leftSplitter::before {
   overflow-y: auto;
 }
 
+.sample-loader-panel {
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sample-loader-lead {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.sample-loader-help {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.sample-loader-btn {
+  opacity: 0.88;
+}
+
+.sample-loader-select {
+  opacity: 0.95;
+}
+
 .accordion-section {
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   background: #ffffff;
   overflow: hidden;
+}
+
+.accordion-section-low-priority .accordion-summary {
+  color: #64748b;
+  font-weight: 650;
 }
 
 .accordion-summary {
@@ -604,6 +641,21 @@ body.theme-dark .debug-log-panel {
   color: #e2e8f0;
 }
 
+body.theme-dark .sample-loader-panel {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+body.theme-dark .sample-loader-lead,
+body.theme-dark .sample-loader-help {
+  color: #94a3b8;
+}
+
+body.theme-dark .sample-loader-btn,
+body.theme-dark .sample-loader-select {
+  opacity: 1;
+}
+
 body.theme-dark .accordion-section {
   background: #111827;
   border-color: #334155;
@@ -611,6 +663,10 @@ body.theme-dark .accordion-section {
 
 body.theme-dark .accordion-summary {
   color: #e2e8f0;
+}
+
+body.theme-dark .accordion-section-low-priority .accordion-summary {
+  color: #94a3b8;
 }
 
 body.theme-dark canvas {
