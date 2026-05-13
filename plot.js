@@ -15,7 +15,8 @@
       cleanupFns: [],
       resizeObserver: null,
       suppressViewChange: false,
-      hoverInfoEl: null
+      hoverInfoEl: null,
+      lastHoverSignature: ""
     };
 
     if (typeof ResizeObserver !== "undefined" && host) {
@@ -44,6 +45,7 @@
     if (!controller) return;
     controller.currentModel = null;
     controller.chartSignature = "";
+    controller.lastHoverSignature = "";
     controller.cleanupFns.forEach(fn => {
       try { fn(); } catch (e) {}
     });
@@ -59,6 +61,7 @@
       }
     }
     controller.hoverInfoEl = null;
+    emitHoverChange(controller, null);
   }
 
   function setPlotModel(controller, model) {
@@ -83,6 +86,7 @@
       controller.chart.series[1].stroke = normalized.stroke;
       controller.chart.redraw();
       applyViewRange(controller, normalized.viewMin, normalized.viewMax);
+      updateHoverInfo(controller, controller.chart);
       controller.suppressViewChange = false;
     }
   }
@@ -107,7 +111,7 @@
       cursor: {
         drag: { x: false, y: false, setScale: false },
         focus: { prox: -1 },
-        points: { show: false }
+        points: { show: true }
       },
       scales: {
         x: { time: false },
@@ -276,6 +280,7 @@
       domainMax,
       viewMin,
       viewMax,
+      valueUnit: model.valueUnit || "",
       minWindowSeconds: Math.max(1 / model.samplingRate, Math.min(fullSpan, Number.isFinite(model.minWindowSeconds) ? model.minWindowSeconds : (8 / model.samplingRate))),
       samplingRate: model.samplingRate
     };
@@ -302,10 +307,12 @@
     const model = controller.currentModel;
     if (!model || !Array.isArray(model.xData) || !Array.isArray(model.yData) || !model.xData.length || !model.yData.length) {
       controller.hoverInfoEl.textContent = "Hover plot for sample and event details.";
+      emitHoverChange(controller, null);
       return;
     }
     if (!chart || !chart.cursor || !Number.isFinite(chart.cursor.idx)) {
       controller.hoverInfoEl.textContent = "Hover plot for sample and event details.";
+      emitHoverChange(controller, null);
       return;
     }
 
@@ -316,22 +323,34 @@
       ? Math.max(0, Math.round(timeSeconds * model.samplingRate))
       : idx;
     const nearestEvent = findNearestEvent(model.events, timeSeconds);
-
+    const valueUnit = String(model.valueUnit || model.yLabel || "value");
     const sampleLabel = "sample " + sampleIndex
-      + " | t=" + formatTimeSeconds(timeSeconds)
-      + " s | y=" + formatHoverNumber(value);
+      + " | time " + formatHoverSeconds(timeSeconds)
+      + " s | value (" + valueUnit + ") " + formatHoverNumber(value);
 
+    const hoverPayload = {
+      sampleIndex,
+      timeSeconds,
+      value,
+      markerIndex: null
+    };
     if (!nearestEvent) {
       controller.hoverInfoEl.textContent = sampleLabel + " | event: none nearby";
+      emitHoverChange(controller, hoverPayload);
       return;
     }
 
-    const dt = Math.abs(nearestEvent.time - timeSeconds);
+    const dtSigned = nearestEvent.time - timeSeconds;
+    const markerLabel = Number.isFinite(nearestEvent.markerIndex)
+      ? ("#" + Math.round(nearestEvent.markerIndex) + " ")
+      : "";
     const eventLabel = eventDisplayLabel(nearestEvent);
     controller.hoverInfoEl.textContent = sampleLabel
-      + " | event: " + eventLabel
-      + " @ " + formatTimeSeconds(nearestEvent.time)
-      + " s (delta " + formatTimeSeconds(dt) + " s)";
+      + " | event: " + markerLabel + eventLabel
+      + " @ " + formatHoverSeconds(nearestEvent.time)
+      + " s (delta " + formatSignedSeconds(dtSigned) + " s)";
+    hoverPayload.markerIndex = Number.isFinite(nearestEvent.markerIndex) ? Math.round(nearestEvent.markerIndex) : null;
+    emitHoverChange(controller, hoverPayload);
   }
 
   function findNearestEvent(events, timeSeconds) {
@@ -350,6 +369,16 @@
     if (!best || !Number.isFinite(bestDt)) return null;
     if (bestDt > 1.5) return null;
     return best;
+  }
+
+  function emitHoverChange(controller, payload) {
+    if (!controller || !controller.options || typeof controller.options.onHoverChange !== "function") return;
+    const markerIndex = payload && Number.isFinite(payload.markerIndex) ? Math.round(payload.markerIndex) : null;
+    const sampleIndex = payload && Number.isFinite(payload.sampleIndex) ? Math.round(payload.sampleIndex) : null;
+    const signature = String(markerIndex) + "|" + String(sampleIndex);
+    if (signature === controller.lastHoverSignature) return;
+    controller.lastHoverSignature = signature;
+    controller.options.onHoverChange(payload);
   }
 
   function getPlotSize(host) {
@@ -399,6 +428,16 @@
 
   function formatTimeSeconds(value) {
     return Number.isFinite(value) ? value.toFixed(1) : "";
+  }
+
+  function formatHoverSeconds(value) {
+    return Number.isFinite(value) ? value.toFixed(2) : "NaN";
+  }
+
+  function formatSignedSeconds(value) {
+    if (!Number.isFinite(value)) return "NaN";
+    const sign = value >= 0 ? "+" : "-";
+    return sign + Math.abs(value).toFixed(2);
   }
 
   function formatAxisNumber(value, span) {

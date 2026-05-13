@@ -177,6 +177,26 @@ canvas {
   vertical-align: top;
 }
 
+.event-table-row {
+  cursor: pointer;
+}
+
+.event-table-row:hover {
+  background: #e0f2fe;
+}
+
+.event-table-row.is-hovered-marker {
+  background: #dbeafe;
+}
+
+.event-table-row.is-selected-marker {
+  background: #bfdbfe;
+}
+
+.event-table-row .event-marker-cell {
+  color: #0f172a;
+}
+
 body { overflow: hidden; }
 
 #appShell {
@@ -559,6 +579,22 @@ body.theme-dark .text-slate-600 {
 
 body.theme-dark .text-slate-700 {
   color: #e2e8f0 !important;
+}
+
+body.theme-dark .event-table-row:hover {
+  background: #0c4a6e;
+}
+
+body.theme-dark .event-table-row.is-hovered-marker {
+  background: #1d4ed8;
+}
+
+body.theme-dark .event-table-row.is-selected-marker {
+  background: #1e40af;
+}
+
+body.theme-dark .event-table-row .event-marker-cell {
+  color: #e2e8f0;
 }
 
 body.theme-dark input,

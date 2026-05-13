@@ -1,6 +1,6 @@
 {
   "name": "fnirs-webpipe",
-  "version": "0.3.28",
+  "version": "0.3.29",
   "private": true,
   "type": "module",
   "scripts": {

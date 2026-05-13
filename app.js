@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.28";
-const APP_LAST_UPDATED = "2026-05-13 11:00 EDT";
+const APP_VERSION = "0.3.29";
+const APP_LAST_UPDATED = "2026-05-13 11:18 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -25,6 +25,10 @@ let currentPlotDurationSeconds = 0;
 let samplingRate = null;
 let data = { wl1: null, wl2: null };
 let events = [];
+let hoveredMarkerIndex = null;
+let hoveredSampleIndex = null;
+let selectedMarkerIndex = null;
+let currentEventTimeByMarkerIndex = new Map();
 let channelLabels = [];
 let channelLabelSource = "default";
 let channelDistancesMm = [];
@@ -513,6 +517,10 @@ function resetAllState() {
   samplingRate = null;
   data = { wl1: null, wl2: null };
   events = [];
+  hoveredMarkerIndex = null;
+  hoveredSampleIndex = null;
+  selectedMarkerIndex = null;
+  currentEventTimeByMarkerIndex = new Map();
   channelLabels = [];
   channelLabelSource = "default";
   channelDistancesMm = [];
@@ -642,7 +650,7 @@ async function loadSnirf(snirfFile) {
       : [760, 850];
     data.wl1 = parsed.wl1;
     data.wl2 = parsed.wl2;
-    events = Array.isArray(parsed.events) ? parsed.events : [];
+    events = normalizeEventsWithMarkerIndices(Array.isArray(parsed.events) ? parsed.events : []);
     channelLabels = Array.isArray(parsed.channelLabels) && parsed.channelLabels.length
       ? parsed.channelLabels.slice()
       : buildDefaultChannelLabels(data.wl1 && data.wl1[0] ? data.wl1[0].length : 0);
@@ -879,7 +887,7 @@ async function loadNirxDatasetFromReaders(parts) {
     }
 
     const evtT = evt ? await evt.readText() : null;
-    events = evtT ? parseEvents(evtT) : [];
+    events = normalizeEventsWithMarkerIndices(evtT ? parseEvents(evtT) : []);
     sources.eventsFrom = evt ? evt.name : "none";
     debugLog("loadDataset:eventsParsed", {
       eventCount: events.length,
@@ -1658,7 +1666,12 @@ function redraw() {
     : (filterStepEnabled ? "no filter" : "disabled");
 
   const intervals = parseIntervals(exclusionTable.value);
-  const rawEvents = events.map(e => ({ time: e.sample / samplingRate, code: e.code, label: eventDisplayLabel(e) }));
+  const rawEvents = events.map(e => ({
+    time: e.sample / samplingRate,
+    code: e.code,
+    label: eventDisplayLabel(e),
+    markerIndex: Number.isFinite(e.markerIndex) ? Math.round(e.markerIndex) : null
+  }));
   const requestedStartSeconds = getRequestedWindowStartSecondsInput();
   const rawDisplay = getDisplayWindow(raw, rawEvents, intervals, samplingRate, activeFilterSpec);
   const rawRequestedWindow = getRequestedPlotWindowSeconds(rawDisplay.series.length / samplingRate);
@@ -1685,7 +1698,7 @@ function redraw() {
   if (needsTrimmedCurrent || needsFilteredCurrent || needsHemoglobin) {
     trimmedEvents = trimStepEnabled
       ? adjustEvents(events, intervals)
-      : rawEvents.map(e => ({ time: e.time, code: e.code, label: e.label }));
+      : rawEvents.map(e => ({ time: e.time, code: e.code, label: e.label, markerIndex: e.markerIndex }));
   }
 
   if (currentPlotMode === "raw") {
@@ -1693,7 +1706,8 @@ function redraw() {
     activePlotHeader = wlLabel + " " + chLabel + " Input (" + domainLabel + ", " + rawRangeLabel + ") | " + formatStats(computeStats(rawWindowed.series));
     activePlotModel = buildPlotRenderModel(rawWindowed, rawDisplay, {
       yLabel: signalDomain === "delta_od" ? "Delta OD" : "Intensity (a.u.)",
-      stroke: "#0f172a"
+      stroke: "#0f172a",
+      valueUnit: signalDomain === "delta_od" ? "Delta OD" : "a.u."
     });
   }
 
@@ -1712,7 +1726,8 @@ function redraw() {
       activePlotHeader = wlLabel + " " + chLabel + " Cut (" + (trimStepEnabled ? "cut on" : "cut off") + ", " + trimmedRangeLabel + ") | " + formatStats(computeStats(trimmedWindowed.series));
       activePlotModel = buildPlotRenderModel(trimmedWindowed, trimmedDisplay, {
         yLabel: signalDomain === "delta_od" ? "Delta OD" : "Intensity (a.u.)",
-        stroke: "#475569"
+        stroke: "#475569",
+        valueUnit: signalDomain === "delta_od" ? "Delta OD" : "a.u."
       });
     }
   }
@@ -1733,7 +1748,8 @@ function redraw() {
       activePlotHeader = wlLabel + " " + chLabel + " Filtered (" + filterLabel + (trimStepEnabled ? ", trim on" : ", trim off") + ", " + filteredRangeLabel + ") | " + formatStats(computeStats(filteredWindowed.series));
       activePlotModel = buildPlotRenderModel(filteredWindowed, filteredDisplay, {
         yLabel: signalDomain === "delta_od" ? "Delta OD" : "Intensity (a.u.)",
-        stroke: "#0f766e"
+        stroke: "#0f766e",
+        valueUnit: signalDomain === "delta_od" ? "Delta OD" : "a.u."
       });
     }
   }
@@ -1789,7 +1805,8 @@ function redraw() {
           series: hbSeries.hbo
         }, {
           yLabel: "Delta HbO (uM)",
-          stroke: "#dc2626"
+          stroke: "#dc2626",
+          valueUnit: "uM"
         });
       } else {
         activePlotHeader = chLabel + " HbO (MBLL unavailable)";
@@ -1804,7 +1821,8 @@ function redraw() {
           series: hbSeries.hbr
         }, {
           yLabel: "Delta HbR (uM)",
-          stroke: "#2563eb"
+          stroke: "#2563eb",
+          valueUnit: "uM"
         });
       } else {
         activePlotHeader = chLabel + " HbR (MBLL unavailable)";
@@ -1819,7 +1837,8 @@ function redraw() {
           series: hbSeries.hbt
         }, {
           yLabel: "Delta HbT (uM)",
-          stroke: "#047857"
+          stroke: "#047857",
+          valueUnit: "uM"
         });
       } else {
         activePlotHeader = chLabel + " HbT (MBLL unavailable)";
@@ -1852,6 +1871,11 @@ function redraw() {
   currentPlotDurationSeconds = activePlotModel
     ? Math.max(0, activePlotModel.domainMax - activePlotModel.domainMin)
     : (rawDisplay.series.length / samplingRate);
+  updateCurrentEventTimeLookup(
+    activePlotModel && Array.isArray(activePlotModel.events)
+      ? activePlotModel.events
+      : rawEvents
+  );
   updateViewNavigationUi(currentPlotDurationSeconds);
   if (plotHeaderEl) plotHeaderEl.textContent = activePlotHeader || "No plot data";
   if (plotController) {
@@ -1909,10 +1933,13 @@ function renderMeta() {
   const labelText = (branchTagInput ? branchTagInput.value.trim() : "") || "none";
   let eventRows = "";
   if (!events.length) {
-    eventRows = "<tr><td class='border px-2 py-2 text-slate-600' colspan='2'>No events found</td></tr>";
+    eventRows = "<tr><td class='border px-2 py-2 text-slate-600' colspan='3'>No events found</td></tr>";
   } else {
     events.forEach(e => {
-      eventRows += "<tr>"
+      const markerIndex = Number.isFinite(e.markerIndex) ? Math.round(e.markerIndex) : null;
+      const markerLabel = markerIndex === null ? "-" : String(markerIndex);
+      eventRows += "<tr class='event-table-row' data-marker-index='" + markerLabel + "'>"
+        + "<td class='border px-2 py-1 text-center font-semibold event-marker-cell' style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + markerLabel + "</td>"
         + "<td class='border px-2 py-1' style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + (e.sample / samplingRate).toFixed(2) + "</td>"
         + "<td class='border px-2 py-1' style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + escapeHtml(eventDisplayLabel(e)) + "</td>"
         + "</tr>";
@@ -1959,19 +1986,111 @@ function renderMeta() {
     + "<table class='w-full text-sm border-collapse' style='table-layout: fixed;'>"
     + "  <thead>"
     + "    <tr class='bg-slate-50'>"
+    + "      <th class='border px-2 py-1 text-left' style='width: 64px;'>Marker</th>"
     + "      <th class='border px-2 py-1 text-left' style='width: 80px;'>Time (s)</th>"
-    + "      <th class='border px-2 py-1 text-left' style='width: 60px;'>Code</th>"
+    + "      <th class='border px-2 py-1 text-left' style='width: 72px;'>Code</th>"
     + "    </tr>"
     + "  </thead>"
     + "  <tbody>"
     + eventRows
     + "  </tbody>"
     + "</table>";
+  bindEventTableInteractions();
+  updateEventTableMarkerHighlight();
   debugLog("renderMeta:end", {
     datasetLabel,
     channelLabelSource,
     eventsRendered: events.length
   });
+}
+
+function bindEventTableInteractions() {
+  if (!eventsContentEl) return;
+  const rows = eventsContentEl.querySelectorAll("tr.event-table-row");
+  rows.forEach(row => {
+    const markerIndex = Number(row.dataset.markerIndex);
+    if (!Number.isFinite(markerIndex) || markerIndex <= 0) return;
+    row.addEventListener("click", () => {
+      centerPlotOnEventMarker(markerIndex);
+    });
+    row.addEventListener("mouseenter", () => {
+      hoveredMarkerIndex = markerIndex;
+      updateEventTableMarkerHighlight();
+    });
+    row.addEventListener("mouseleave", () => {
+      hoveredMarkerIndex = null;
+      updateEventTableMarkerHighlight();
+    });
+  });
+}
+
+function updateEventTableMarkerHighlight() {
+  if (!eventsContentEl) return;
+  const rows = eventsContentEl.querySelectorAll("tr.event-table-row");
+  rows.forEach(row => {
+    const markerIndex = Number(row.dataset.markerIndex);
+    const isHovered = Number.isFinite(markerIndex) && markerIndex > 0 && markerIndex === hoveredMarkerIndex;
+    const isSelected = Number.isFinite(markerIndex) && markerIndex > 0 && markerIndex === selectedMarkerIndex;
+    row.classList.toggle("is-hovered-marker", isHovered);
+    row.classList.toggle("is-selected-marker", isSelected);
+  });
+}
+
+function findEventByMarkerIndex(markerIndex) {
+  const wanted = Number(markerIndex);
+  if (!Number.isFinite(wanted) || wanted <= 0) return null;
+  for (let i = 0; i < events.length; i += 1) {
+    const event = events[i];
+    if (!event) continue;
+    if (Number.isFinite(event.markerIndex) && Math.round(event.markerIndex) === Math.round(wanted)) return event;
+  }
+  return null;
+}
+
+function centerPlotOnEventMarker(markerIndex) {
+  const event = findEventByMarkerIndex(markerIndex);
+  if (!event || !Number.isFinite(event.sample) || !Number.isFinite(samplingRate) || samplingRate <= 0) return;
+  const marker = Math.round(markerIndex);
+  selectedMarkerIndex = marker;
+  const mappedTime = currentEventTimeByMarkerIndex.get(marker);
+  const eventTimeSeconds = Number.isFinite(mappedTime) ? mappedTime : (event.sample / samplingRate);
+  centerPlotOnTimeSeconds(eventTimeSeconds);
+  updateEventTableMarkerHighlight();
+}
+
+function centerPlotOnTimeSeconds(targetTimeSeconds) {
+  const durationSeconds = Number.isFinite(currentPlotDurationSeconds) && currentPlotDurationSeconds > 0
+    ? currentPlotDurationSeconds
+    : getReferenceDurationSeconds();
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return;
+  const windowSeconds = getRequestedPlotWindowSeconds(durationSeconds);
+  const span = Number.isFinite(windowSeconds) && windowSeconds > 0 ? Math.min(windowSeconds, durationSeconds) : durationSeconds;
+  const maxStart = Math.max(0, durationSeconds - span);
+  const centeredStart = Number(targetTimeSeconds) - span / 2;
+  const nextStart = Math.max(0, Math.min(centeredStart, maxStart));
+  if (viewOffsetSlider) viewOffsetSlider.value = nextStart.toFixed(3);
+  updateViewNavigationUi(durationSeconds);
+  requestUiRedraw({ navigation: true });
+}
+
+function handlePlotHoverChange(hover) {
+  const nextMarker = hover && Number.isFinite(hover.markerIndex) ? Math.round(hover.markerIndex) : null;
+  const nextSample = hover && Number.isFinite(hover.sampleIndex) ? Math.round(hover.sampleIndex) : null;
+  const markerChanged = nextMarker !== hoveredMarkerIndex;
+  hoveredMarkerIndex = nextMarker;
+  hoveredSampleIndex = nextSample;
+  if (markerChanged) updateEventTableMarkerHighlight();
+}
+
+function updateCurrentEventTimeLookup(eventsIn) {
+  const next = new Map();
+  if (Array.isArray(eventsIn)) {
+    eventsIn.forEach(event => {
+      if (!event || !Number.isFinite(event.markerIndex) || !Number.isFinite(event.time)) return;
+      next.set(Math.round(event.markerIndex), Number(event.time));
+    });
+  }
+  currentEventTimeByMarkerIndex = next;
 }
 
 /* ================= Protocol object, export, import ================= */
@@ -2522,6 +2641,18 @@ function parseEvents(t) {
     .filter(Boolean);
 }
 
+function normalizeEventsWithMarkerIndices(eventsIn) {
+  if (!Array.isArray(eventsIn) || !eventsIn.length) return [];
+  return eventsIn
+    .filter(event => event && Number.isFinite(event.sample))
+    .map((event, idx) => ({
+      sample: Math.max(0, Math.round(Number(event.sample))),
+      code: Number.isFinite(event.code) ? Math.round(Number(event.code)) : null,
+      label: typeof event.label === "string" ? event.label : "",
+      markerIndex: idx + 1
+    }));
+}
+
 function decodeBinaryMarkerFields(markerFields) {
   return markerFields.reduce((out, value, idx) => {
     if (value !== 0) out.code += Math.pow(2, idx);
@@ -2547,7 +2678,14 @@ function applyExclusions(series, intervals) {
 
 function adjustEvents(eventsIn, intervals) {
   if (!eventsIn.length) return [];
-  if (!intervals.length) return eventsIn.map(e => ({ time: e.sample / samplingRate, code: e.code, label: eventDisplayLabel(e) }));
+  if (!intervals.length) {
+    return eventsIn.map(e => ({
+      time: e.sample / samplingRate,
+      code: e.code,
+      label: eventDisplayLabel(e),
+      markerIndex: Number.isFinite(e.markerIndex) ? Math.round(e.markerIndex) : null
+    }));
+  }
 
   const out = [];
   eventsIn.forEach(e => {
@@ -2560,7 +2698,14 @@ function adjustEvents(eventsIn, intervals) {
       if (intv.end < t) shift += (intv.end - intv.start);
     });
 
-    if (!excluded) out.push({ time: t - shift, code: e.code, label: eventDisplayLabel(e) });
+    if (!excluded) {
+      out.push({
+        time: t - shift,
+        code: e.code,
+        label: eventDisplayLabel(e),
+        markerIndex: Number.isFinite(e.markerIndex) ? Math.round(e.markerIndex) : null
+      });
+    }
   });
   return out;
 }
@@ -2583,7 +2728,14 @@ function buildDefaultChannelLabels(count) {
 function getDisplayWindow(series, eventsIn, intervalsIn, fs, filterSpec) {
   return {
     series: Array.isArray(series) ? series.slice() : [],
-    events: Array.isArray(eventsIn) ? eventsIn.map(e => ({ time: e.time, code: e.code, label: eventDisplayLabel(e) })) : [],
+    events: Array.isArray(eventsIn)
+      ? eventsIn.map(e => ({
+        time: e.time,
+        code: e.code,
+        label: eventDisplayLabel(e),
+        markerIndex: Number.isFinite(e.markerIndex) ? Math.round(e.markerIndex) : null
+      }))
+      : [],
     intervals: Array.isArray(intervalsIn) ? intervalsIn.map(intv => ({ start: intv.start, end: intv.end })) : intervalsIn
   };
 }
@@ -2670,7 +2822,14 @@ function formatControlSeconds(value) {
 function sliceDisplayByTimeWindow(display, fs, requestedStartSeconds, requestedWindowSeconds) {
   const safe = {
     series: Array.isArray(display && display.series) ? display.series.slice() : [],
-    events: Array.isArray(display && display.events) ? display.events.map(e => ({ time: e.time, code: e.code, label: eventDisplayLabel(e) })) : [],
+    events: Array.isArray(display && display.events)
+      ? display.events.map(e => ({
+        time: e.time,
+        code: e.code,
+        label: eventDisplayLabel(e),
+        markerIndex: Number.isFinite(e.markerIndex) ? Math.round(e.markerIndex) : null
+      }))
+      : [],
     intervals: Array.isArray(display && display.intervals) ? display.intervals.map(intv => ({ start: intv.start, end: intv.end })) : []
   };
   if (!Number.isFinite(fs) || fs <= 0 || !safe.series.length) {
@@ -2687,7 +2846,12 @@ function sliceDisplayByTimeWindow(display, fs, requestedStartSeconds, requestedW
   safe.series = safe.series.slice(startSample, endSample);
   safe.events = safe.events
     .filter(e => Number.isFinite(e.time) && e.time >= startSeconds && e.time <= endSeconds)
-    .map(e => ({ time: e.time - startSeconds, code: e.code, label: eventDisplayLabel(e) }));
+    .map(e => ({
+      time: e.time - startSeconds,
+      code: e.code,
+      label: eventDisplayLabel(e),
+      markerIndex: Number.isFinite(e.markerIndex) ? Math.round(e.markerIndex) : null
+    }));
   safe.intervals = safe.intervals
     .map(intv => ({
       start: Math.max(intv.start, startSeconds) - startSeconds,
@@ -2709,7 +2873,8 @@ function absolutizeWindowEvents(windowed) {
   return windowed.events.map(event => ({
     time: event.time + windowed.startSeconds,
     code: event.code,
-    label: event.label
+    label: event.label,
+    markerIndex: Number.isFinite(event.markerIndex) ? Math.round(event.markerIndex) : null
   }));
 }
 
@@ -2734,6 +2899,7 @@ function buildPlotRenderModel(windowed, fullDisplay, config) {
     viewMax: windowed.startSeconds + spanSeconds,
     domainMin: 0,
     domainMax: fullDisplay.series.length / samplingRate,
+    valueUnit: config.valueUnit || "",
     events: absolutizeWindowEvents(windowed),
     overlays: absolutizeWindowIntervals(windowed)
   };
@@ -2802,7 +2968,8 @@ function initPlotLayout() {
     stageSummaryHost.style.display = "none";
   }
   plotController = fnirsPlot.createPlotController(plotHostEl, {
-    onViewChange: syncControlsFromPlotView
+    onViewChange: syncControlsFromPlotView,
+    onHoverChange: handlePlotHoverChange
   });
   applyPlotMode();
 }
