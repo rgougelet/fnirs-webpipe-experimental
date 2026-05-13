@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.29";
-const APP_LAST_UPDATED = "2026-05-13 11:18 EDT";
+const APP_VERSION = "0.3.31";
+const APP_LAST_UPDATED = "2026-05-13 12:36 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -29,6 +29,8 @@ let hoveredMarkerIndex = null;
 let hoveredSampleIndex = null;
 let selectedMarkerIndex = null;
 let currentEventTimeByMarkerIndex = new Map();
+let timeLockMarkerIndex = null;
+let timeLockReferenceSeconds = null;
 let channelLabels = [];
 let channelLabelSource = "default";
 let channelDistancesMm = [];
@@ -521,6 +523,8 @@ function resetAllState() {
   hoveredSampleIndex = null;
   selectedMarkerIndex = null;
   currentEventTimeByMarkerIndex = new Map();
+  timeLockMarkerIndex = null;
+  timeLockReferenceSeconds = null;
   channelLabels = [];
   channelLabelSource = "default";
   channelDistancesMm = [];
@@ -1881,6 +1885,13 @@ function redraw() {
   if (plotController) {
     if (activePlotModel) plotController.setModel(activePlotModel);
     else plotController.clear();
+    if (typeof plotController.setInteractionState === "function") {
+      plotController.setInteractionState({
+        hoveredMarkerIndex,
+        selectedMarkerIndex,
+        hoveredSampleIndex
+      });
+    }
   }
   renderStageSummary(stageSummaryVisible ? stageSummaryModel : null);
   debugLog("redraw:end", {
@@ -2015,10 +2026,24 @@ function bindEventTableInteractions() {
     });
     row.addEventListener("mouseenter", () => {
       hoveredMarkerIndex = markerIndex;
+      if (plotController && typeof plotController.setInteractionState === "function") {
+        plotController.setInteractionState({
+          hoveredMarkerIndex,
+          selectedMarkerIndex,
+          hoveredSampleIndex
+        });
+      }
       updateEventTableMarkerHighlight();
     });
     row.addEventListener("mouseleave", () => {
       hoveredMarkerIndex = null;
+      if (plotController && typeof plotController.setInteractionState === "function") {
+        plotController.setInteractionState({
+          hoveredMarkerIndex,
+          selectedMarkerIndex,
+          hoveredSampleIndex
+        });
+      }
       updateEventTableMarkerHighlight();
     });
   });
@@ -2054,23 +2079,27 @@ function centerPlotOnEventMarker(markerIndex) {
   selectedMarkerIndex = marker;
   const mappedTime = currentEventTimeByMarkerIndex.get(marker);
   const eventTimeSeconds = Number.isFinite(mappedTime) ? mappedTime : (event.sample / samplingRate);
-  centerPlotOnTimeSeconds(eventTimeSeconds);
-  updateEventTableMarkerHighlight();
-}
-
-function centerPlotOnTimeSeconds(targetTimeSeconds) {
+  timeLockMarkerIndex = marker;
+  timeLockReferenceSeconds = eventTimeSeconds;
   const durationSeconds = Number.isFinite(currentPlotDurationSeconds) && currentPlotDurationSeconds > 0
     ? currentPlotDurationSeconds
     : getReferenceDurationSeconds();
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return;
-  const windowSeconds = getRequestedPlotWindowSeconds(durationSeconds);
-  const span = Number.isFinite(windowSeconds) && windowSeconds > 0 ? Math.min(windowSeconds, durationSeconds) : durationSeconds;
-  const maxStart = Math.max(0, durationSeconds - span);
-  const centeredStart = Number(targetTimeSeconds) - span / 2;
-  const nextStart = Math.max(0, Math.min(centeredStart, maxStart));
-  if (viewOffsetSlider) viewOffsetSlider.value = nextStart.toFixed(3);
-  updateViewNavigationUi(durationSeconds);
+  if (viewOffsetSlider && Number.isFinite(durationSeconds) && durationSeconds > 0) {
+    const windowSeconds = getRequestedPlotWindowSeconds(durationSeconds);
+    const maxStart = Math.max(0, durationSeconds - windowSeconds);
+    const startSeconds = Math.max(0, Math.min(eventTimeSeconds, maxStart));
+    viewOffsetSlider.value = startSeconds.toFixed(3);
+    updateViewNavigationSummary(durationSeconds);
+  }
+  if (plotController && typeof plotController.setInteractionState === "function") {
+    plotController.setInteractionState({
+      hoveredMarkerIndex,
+      selectedMarkerIndex,
+      hoveredSampleIndex
+    });
+  }
   requestUiRedraw({ navigation: true });
+  updateEventTableMarkerHighlight();
 }
 
 function handlePlotHoverChange(hover) {
@@ -2900,6 +2929,11 @@ function buildPlotRenderModel(windowed, fullDisplay, config) {
     domainMin: 0,
     domainMax: fullDisplay.series.length / samplingRate,
     valueUnit: config.valueUnit || "",
+    selectedMarkerIndex: Number.isFinite(selectedMarkerIndex) ? Math.round(selectedMarkerIndex) : null,
+    hoveredMarkerIndex: Number.isFinite(hoveredMarkerIndex) ? Math.round(hoveredMarkerIndex) : null,
+    hoveredSampleIndex: Number.isFinite(hoveredSampleIndex) ? Math.round(hoveredSampleIndex) : null,
+    timeLockMarkerIndex: Number.isFinite(timeLockMarkerIndex) ? Math.round(timeLockMarkerIndex) : null,
+    timeLockReferenceSeconds: Number.isFinite(timeLockReferenceSeconds) ? Number(timeLockReferenceSeconds) : null,
     events: absolutizeWindowEvents(windowed),
     overlays: absolutizeWindowIntervals(windowed)
   };
