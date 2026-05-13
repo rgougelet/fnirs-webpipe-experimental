@@ -14,7 +14,8 @@
       chartSignature: "",
       cleanupFns: [],
       resizeObserver: null,
-      suppressViewChange: false
+      suppressViewChange: false,
+      hoverInfoEl: null
     };
 
     if (typeof ResizeObserver !== "undefined" && host) {
@@ -51,7 +52,13 @@
       controller.chart.destroy();
       controller.chart = null;
     }
-    if (controller.host) controller.host.textContent = "";
+    if (controller.host) {
+      controller.host.textContent = "";
+      if (controller.hoverInfoEl && controller.hoverInfoEl.parentElement === controller.host) {
+        controller.host.removeChild(controller.hoverInfoEl);
+      }
+    }
+    controller.hoverInfoEl = null;
   }
 
   function setPlotModel(controller, model) {
@@ -163,12 +170,15 @@
             windowSeconds: u.scales.x.max - u.scales.x.min,
             durationSeconds: controller.currentModel.domainMax - controller.currentModel.domainMin
           });
-        }]
+        }],
+        setCursor: [u => updateHoverInfo(controller, u)]
       },
       plugins
     };
 
     controller.chart = new uPlot(opts, [model.xData, model.yData], controller.host);
+    ensureHoverInfo(controller);
+    updateHoverInfo(controller, null);
     applyViewRange(controller, model.viewMin, model.viewMax);
   }
 
@@ -196,8 +206,8 @@
             model.overlays.forEach(intv => {
               if (!intv || !Number.isFinite(intv.start) || !Number.isFinite(intv.end)) return;
               if (intv.end < xMin || intv.start > xMax) return;
-              const x1 = left + u.valToPos(intv.start, "x");
-              const x2 = left + u.valToPos(intv.end, "x");
+              const x1 = u.valToPos(intv.start, "x", true);
+              const x2 = u.valToPos(intv.end, "x", true);
               ctx.fillRect(x1, top, Math.max(1, x2 - x1), height);
             });
           }
@@ -214,7 +224,7 @@
             model.events.forEach(event => {
               if (!event || !Number.isFinite(event.time)) return;
               if (event.time < xMin || event.time > xMax) return;
-              const x = left + u.valToPos(event.time, "x");
+              const x = u.valToPos(event.time, "x", true);
               ctx.beginPath();
               ctx.moveTo(x, top);
               ctx.lineTo(x, top + height);
@@ -278,6 +288,70 @@
     ].join("|");
   }
 
+  function ensureHoverInfo(controller) {
+    if (!controller || !controller.host || controller.hoverInfoEl) return;
+    const el = document.createElement("div");
+    el.className = "plot-hover-info";
+    el.textContent = "Hover plot for sample and event details.";
+    controller.host.appendChild(el);
+    controller.hoverInfoEl = el;
+  }
+
+  function updateHoverInfo(controller, chart) {
+    if (!controller || !controller.hoverInfoEl) return;
+    const model = controller.currentModel;
+    if (!model || !Array.isArray(model.xData) || !Array.isArray(model.yData) || !model.xData.length || !model.yData.length) {
+      controller.hoverInfoEl.textContent = "Hover plot for sample and event details.";
+      return;
+    }
+    if (!chart || !chart.cursor || !Number.isFinite(chart.cursor.idx)) {
+      controller.hoverInfoEl.textContent = "Hover plot for sample and event details.";
+      return;
+    }
+
+    const idx = Math.max(0, Math.min(model.xData.length - 1, Math.round(chart.cursor.idx)));
+    const timeSeconds = Number(model.xData[idx]);
+    const value = Number(model.yData[idx]);
+    const sampleIndex = Number.isFinite(timeSeconds) && Number.isFinite(model.samplingRate)
+      ? Math.max(0, Math.round(timeSeconds * model.samplingRate))
+      : idx;
+    const nearestEvent = findNearestEvent(model.events, timeSeconds);
+
+    const sampleLabel = "sample " + sampleIndex
+      + " | t=" + formatTimeSeconds(timeSeconds)
+      + " s | y=" + formatHoverNumber(value);
+
+    if (!nearestEvent) {
+      controller.hoverInfoEl.textContent = sampleLabel + " | event: none nearby";
+      return;
+    }
+
+    const dt = Math.abs(nearestEvent.time - timeSeconds);
+    const eventLabel = eventDisplayLabel(nearestEvent);
+    controller.hoverInfoEl.textContent = sampleLabel
+      + " | event: " + eventLabel
+      + " @ " + formatTimeSeconds(nearestEvent.time)
+      + " s (delta " + formatTimeSeconds(dt) + " s)";
+  }
+
+  function findNearestEvent(events, timeSeconds) {
+    if (!Array.isArray(events) || !events.length || !Number.isFinite(timeSeconds)) return null;
+    let best = null;
+    let bestDt = Infinity;
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+      if (!event || !Number.isFinite(event.time)) continue;
+      const dt = Math.abs(event.time - timeSeconds);
+      if (dt < bestDt) {
+        best = event;
+        bestDt = dt;
+      }
+    }
+    if (!best || !Number.isFinite(bestDt)) return null;
+    if (bestDt > 1.5) return null;
+    return best;
+  }
+
   function getPlotSize(host) {
     const width = Math.max(MIN_WIDTH, Math.round(host && host.clientWidth ? host.clientWidth : 900));
     const hostHeight = host && host.clientHeight ? Math.round(host.clientHeight) : 0;
@@ -338,6 +412,13 @@
     if (span < 0.1) return value.toFixed(4);
     if (span < 1) return value.toFixed(3);
     return value.toFixed(2);
+  }
+
+  function formatHoverNumber(value) {
+    if (!Number.isFinite(value)) return "NaN";
+    const abs = Math.abs(value);
+    if (abs >= 1000 || (abs > 0 && abs < 0.001)) return value.toExponential(3);
+    return value.toFixed(4);
   }
 
   function eventDisplayLabel(event) {
