@@ -418,7 +418,7 @@ body.is-resizing #leftSplitter::before {
 .plot-scroller {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: stretch;
   gap: 12px;
   min-width: 0;
   padding: 8px 10px;
@@ -431,11 +431,49 @@ body.is-resizing #leftSplitter::before {
   width: 100%;
 }
 
+.plot-scroll-meta {
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
 .plot-scroll-summary {
-  min-width: 260px;
+  min-width: 280px;
   font-size: 0.82rem;
   font-weight: 650;
   text-align: right;
+  white-space: normal;
+}
+
+.plot-window-inline-row {
+  display: grid;
+  grid-template-columns: auto 84px auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.plot-window-inline-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.plot-window-seconds-input {
+  padding: 4px 6px;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  text-align: right;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.plot-window-inline-hint {
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: #64748b;
   white-space: nowrap;
 }
 
@@ -486,10 +524,10 @@ body.is-resizing #leftSplitter::before {
 }
 
 .accordion-section {
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  background: #ffffff;
-  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
 }
 
 .accordion-section-low-priority .accordion-summary {
@@ -499,7 +537,8 @@ body.is-resizing #leftSplitter::before {
 
 .accordion-summary {
   display: block;
-  padding: 10px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e2e8f0;
   font-weight: 700;
   cursor: pointer;
   user-select: none;
@@ -511,7 +550,7 @@ body.is-resizing #leftSplitter::before {
 }
 
 .accordion-body {
-  padding: 0 12px 12px 12px;
+  padding: 10px 0 10px 0;
 }
 
 .accordion-section:not([open]) .accordion-body {
@@ -672,6 +711,17 @@ body.theme-dark .plot-scroller {
   color: #cbd5e1;
 }
 
+body.theme-dark .plot-window-inline-label,
+body.theme-dark .plot-window-inline-hint {
+  color: #94a3b8;
+}
+
+body.theme-dark .plot-window-seconds-input {
+  background: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
 body.theme-dark .plot-tab-btn {
   background: #0f172a;
   color: #e2e8f0;
@@ -712,12 +762,12 @@ body.theme-dark .sample-loader-select {
 }
 
 body.theme-dark .accordion-section {
-  background: #111827;
-  border-color: #334155;
+  background: transparent;
 }
 
 body.theme-dark .accordion-summary {
   color: #e2e8f0;
+  border-bottom-color: #334155;
 }
 
 body.theme-dark .accordion-section-low-priority .accordion-summary {

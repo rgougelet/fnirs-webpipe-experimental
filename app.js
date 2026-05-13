@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.3.31";
-const APP_LAST_UPDATED = "2026-05-13 12:36 EDT";
+const APP_VERSION = "0.3.32";
+const APP_LAST_UPDATED = "2026-05-13 12:58 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -55,7 +55,6 @@ let highToggleBtn = null;
 let filterEngineSelect = null;
 let dcRestoreCheckbox = null;
 let plotModeSelect = null;
-let signalDomainSelect = null;
 let filterStepCheckbox = null;
 let trimStepCheckbox = null;
 let pipelineSummaryEl = null;
@@ -99,6 +98,8 @@ const LEFT_PANEL_WIDTH_STORAGE_KEY = "fnirs-webpipe-left-panel-width";
 const DEFAULT_PASSBAND_RIPPLE_DB = 0.1;
 const DEFAULT_STOPBAND_ATTENUATION_DB = 6.0;
 const MIN_EDGE_PADDING_SECONDS = 10.0;
+const ENABLE_TIME_LOCK_REFERENCE = false;
+const PLOT_KEYBOARD_NUDGE_FRACTION = 0.2;
 let currentPlotMode = "raw";
 let plotScrollerEl = null;
 let plotTabBarEl = null;
@@ -150,6 +151,7 @@ initPlotLayout();
 buildControls();
 renderAppLastUpdated();
 initLeftSplitter();
+initPlotKeyboardNavigation();
 
 initUrlProtocolListener();
 
@@ -499,6 +501,46 @@ function initTheme() {
   applyTheme(saved === "light" ? "light" : "dark");
 }
 
+function isTypingTarget(target) {
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+  const tag = String(target.tagName || "").toUpperCase();
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+function nudgePlotWindow(direction) {
+  const durationSeconds = Number.isFinite(currentPlotDurationSeconds) && currentPlotDurationSeconds > 0
+    ? currentPlotDurationSeconds
+    : getReferenceDurationSeconds();
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return;
+  const windowSeconds = getRequestedPlotWindowSeconds(durationSeconds);
+  const span = Number.isFinite(windowSeconds) && windowSeconds > 0 ? windowSeconds : durationSeconds;
+  const maxStart = Math.max(0, durationSeconds - span);
+  if (maxStart <= 0) return;
+  const currentStart = getRequestedWindowStartSecondsInput();
+  const stepSeconds = Math.max(0.1, span * PLOT_KEYBOARD_NUDGE_FRACTION);
+  const dir = direction < 0 ? -1 : 1;
+  const nextStart = Math.max(0, Math.min(maxStart, currentStart + dir * stepSeconds));
+  if (viewOffsetSlider) viewOffsetSlider.value = nextStart.toFixed(3);
+  updateViewNavigationSummary(durationSeconds);
+  requestUiRedraw({ navigation: true });
+}
+
+function initPlotKeyboardNavigation() {
+  document.addEventListener("keydown", event => {
+    if (isTypingTarget(event.target)) return;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      nudgePlotWindow(-1);
+      return;
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      nudgePlotWindow(1);
+    }
+  });
+}
+
 function initPlotMode() {
   currentPlotMode = "raw";
   try {
@@ -552,6 +594,7 @@ function resetAllState() {
 
 function normalizePlotMode(mode) {
   switch (mode) {
+    case "od":
     case "filtered":
     case "trimmed":
     case "hbo":
@@ -1083,7 +1126,7 @@ function buildControls() {
     b.type = "button";
     b.className = "choice-btn wl-choice-btn";
     b.dataset.wlChoice = wl;
-    b.textContent = wl === "wl1" ? "760" : "850";
+    b.textContent = wl === "wl1" ? getWavelengthLabel(0) : getWavelengthLabel(1);
     b.onclick = () => {
       currentWavelength = wl;
       rebuildRadioSelections();
@@ -1134,27 +1177,6 @@ function buildControls() {
 
   const pipelineDiv = document.createElement("div");
   pipelineDiv.className = "pt-2 flex flex-col gap-2";
-
-  const domainRow = document.createElement("div");
-  domainRow.className = "grid grid-cols-[auto_1fr] gap-2 items-center";
-  const domainLbl = document.createElement("div");
-  domainLbl.className = "text-xs text-slate-600 font-semibold whitespace-nowrap";
-  domainLbl.textContent = "Signal:";
-  signalDomainSelect = document.createElement("select");
-  signalDomainSelect.className = "p-2 border rounded bg-white w-full text-sm";
-  [{ value: "intensity", label: "Intensity (a.u.)" }, { value: "delta_od", label: "Delta OD" }].forEach(opt => {
-    const o = document.createElement("option");
-    o.value = opt.value;
-    o.textContent = opt.label;
-    signalDomainSelect.appendChild(o);
-  });
-  signalDomainSelect.value = "intensity";
-  signalDomainSelect.onchange = () => {
-    updatePipelineSummary();
-    requestUiRedraw({ meta: true });
-  };
-  domainRow.appendChild(domainLbl);
-  domainRow.appendChild(signalDomainSelect);
 
   const filterMasterRow = document.createElement("label");
   filterMasterRow.className = "inline-flex items-center gap-2 text-sm";
@@ -1227,9 +1249,8 @@ function buildControls() {
   physiologyNote.className = "text-xs text-slate-600 leading-tight";
   physiologyNote.textContent = "DPF is a unitless optical pathlength factor. Channel distance (mm) is read separately from the NIRx header for MBLL.";
 
-  pipelineDiv.appendChild(domainRow);
-  pipelineDiv.appendChild(physiologyRow);
-  pipelineDiv.appendChild(physiologyNote);
+  wlDiv.appendChild(physiologyRow);
+  wlDiv.appendChild(physiologyNote);
   pipelineDiv.appendChild(pipelineSummaryEl);
 
   const exDiv = document.createElement("div");
@@ -1346,31 +1367,6 @@ function buildControls() {
   durationNote.className = "text-xs text-slate-600 leading-tight";
   durationNote.textContent = "Rule of thumb: 0.1 Hz needs about 10 s per cycle, 0.01 Hz about 100 s. One cycle is the minimum; several cycles are preferred.";
 
-  const viewCard = document.createElement("div");
-  viewCard.className = "rounded border border-slate-200 p-3 flex flex-col space-y-2";
-  const layoutNote = document.createElement("div");
-  layoutNote.className = "text-xs text-slate-600 leading-tight";
-  layoutNote.textContent = "Layout: single plot with tabs. Raw, Filtered, Cut, HbO, HbR, and HbT share the current time window.";
-  viewCard.appendChild(layoutNote);
-
-  const windowRow = document.createElement("div");
-  windowRow.className = "grid grid-cols-[auto_88px] gap-2 items-center";
-  const windowLbl = document.createElement("div");
-  windowLbl.className = "text-xs text-slate-600 font-semibold whitespace-nowrap";
-  windowLbl.textContent = "Data window (s):";
-  viewWindowSecondsInput = document.createElement("input");
-  viewWindowSecondsInput.type = "text";
-  viewWindowSecondsInput.inputMode = "decimal";
-  viewWindowSecondsInput.value = "60";
-  viewWindowSecondsInput.className = "p-2 border rounded bg-white w-full text-sm";
-  viewWindowSecondsInput.title = "Visible time span in seconds. Larger than the record duration shows the full trace.";
-  viewWindowSecondsInput.oninput = () => {
-    requestUiRedraw({ navigation: true });
-  };
-  windowRow.appendChild(windowLbl);
-  windowRow.appendChild(viewWindowSecondsInput);
-  viewCard.appendChild(windowRow);
-
   fDiv.appendChild(lowRow);
   fDiv.appendChild(highRow);
   fDiv.appendChild(dcRow);
@@ -1391,9 +1387,6 @@ function buildControls() {
   accordionStack.className = "flex flex-col gap-2";
   accordionStack.appendChild(createAccordionSection("Import", importDiv, true));
   accordionStack.appendChild(createAccordionSection("Bundled Samples (Optional)", sampleDiv, false, "accordion-section-low-priority"));
-  accordionStack.appendChild(createAccordionSection("Actions", actionsDiv, false));
-  accordionStack.appendChild(createAccordionSection("Protocol", protocolDiv, false));
-  accordionStack.appendChild(createAccordionSection("Plot View", viewCard, false));
   if (data.wl1) {
     recordingSummaryContentEl = document.createElement("div");
     recordingSummaryContentEl.className = "pt-2";
@@ -1404,14 +1397,16 @@ function buildControls() {
     accordionStack.appendChild(createAccordionSection("Recording Summary", recordingSummaryContentEl, true));
     accordionStack.appendChild(createAccordionSection("File Sources", fileSourcesContentEl, false));
     accordionStack.appendChild(createAccordionSection("Events", eventsContentEl, false));
-    accordionStack.appendChild(createAccordionSection("Wavelength", wlDiv, true));
+    accordionStack.appendChild(createAccordionSection("Wavelengths", wlDiv, true));
     accordionStack.appendChild(createAccordionSection("Channel", chDiv, true));
-    accordionStack.appendChild(createAccordionSection("Pipeline", pipelineDiv, false));
     accordionStack.appendChild(createAccordionSection("Filter", fDiv, true));
     accordionStack.appendChild(createAccordionSection("Cut Intervals", exDiv, false));
+    accordionStack.appendChild(createAccordionSection("Pipeline", pipelineDiv, false, "accordion-section-low-priority"));
     accordionStack.appendChild(createAccordionSection("Notes", notesDiv, false));
   }
-  accordionStack.appendChild(createAccordionSection("Debug Log", debugDiv, false));
+  accordionStack.appendChild(createAccordionSection("Actions", actionsDiv, false, "accordion-section-low-priority"));
+  accordionStack.appendChild(createAccordionSection("Protocol", protocolDiv, false, "accordion-section-low-priority"));
+  accordionStack.appendChild(createAccordionSection("Debug Log", debugDiv, false, "accordion-section-low-priority"));
   controls.appendChild(accordionStack);
   rebuildRadioSelections();
   updateFilterToggleButtons();
@@ -1474,16 +1469,21 @@ function updateFilterToggleButtons() {
   if (filterEngineSelect) filterEngineSelect.disabled = !anyFilterStageEnabled;
 }
 
+function getSignalDomainForPlotMode(mode) {
+  if (mode === "raw") return "intensity";
+  if (mode === "od" || mode === "filtered" || mode === "trimmed" || isHemoglobinPlotMode(mode)) return "delta_od";
+  return "intensity";
+}
+
 function getSignalDomain() {
-  if (!signalDomainSelect) return "intensity";
-  return signalDomainSelect.value === "delta_od" ? "delta_od" : "intensity";
+  return getSignalDomainForPlotMode(currentPlotMode);
 }
 
 function updatePipelineSummary() {
   if (!pipelineSummaryEl) return;
   const filterLabel = filterStepEnabled ? "Filter on" : "Filter off";
   const trimLabel = trimStepEnabled ? "Cut on" : "Cut off";
-  pipelineSummaryEl.textContent = "Intensity -> Delta OD -> " + filterLabel + " -> " + trimLabel + " -> MBLL Hb";
+  pipelineSummaryEl.textContent = "Raw tab: intensity | Optical Density tab: delta OD | " + filterLabel + " | " + trimLabel + " | Hb tabs use MBLL";
 }
 
 function intensityToDeltaOd(series) {
@@ -1620,7 +1620,6 @@ function resetProtocolUiOnly() {
   if (highCutSixDbInput) highCutSixDbInput.value = "12.5";
   if (filterEngineSelect) filterEngineSelect.value = "basic_iir";
   if (dcRestoreCheckbox) dcRestoreCheckbox.checked = true;
-  if (signalDomainSelect) signalDomainSelect.value = "intensity";
   if (dpfWl1Input) dpfWl1Input.value = String(DEFAULT_DPF.wl1);
   if (dpfWl2Input) dpfWl2Input.value = String(DEFAULT_DPF.wl2);
   filterStepEnabled = false;
@@ -1705,9 +1704,10 @@ function redraw() {
       : rawEvents.map(e => ({ time: e.time, code: e.code, label: e.label, markerIndex: e.markerIndex }));
   }
 
-  if (currentPlotMode === "raw") {
+  if (currentPlotMode === "raw" || currentPlotMode === "od") {
     const rawRangeLabel = formatWindowRangeLabel(rawWindowed.startSeconds, rawWindowed.series.length / samplingRate);
-    activePlotHeader = wlLabel + " " + chLabel + " Input (" + domainLabel + ", " + rawRangeLabel + ") | " + formatStats(computeStats(rawWindowed.series));
+    const inputLabel = currentPlotMode === "od" ? "Optical density" : "Input";
+    activePlotHeader = wlLabel + " " + chLabel + " " + inputLabel + " (" + domainLabel + ", " + rawRangeLabel + ") | " + formatStats(computeStats(rawWindowed.series));
     activePlotModel = buildPlotRenderModel(rawWindowed, rawDisplay, {
       yLabel: signalDomain === "delta_od" ? "Delta OD" : "Intensity (a.u.)",
       stroke: "#0f172a",
@@ -1965,7 +1965,7 @@ function renderMeta() {
     + "  <div class='text-slate-600'>Samples</div><div>" + data.wl1.length + "</div>"
     + "  <div class='text-slate-600'>Duration</div><div>" + (data.wl1.length / samplingRate).toFixed(2) + " s</div>"
     + "  <div class='text-slate-600'>Channels</div><div>" + data.wl1[0].length + "</div>"
-    + "  <div class='text-slate-600'>Signal domain</div><div>" + (getSignalDomain() === "delta_od" ? "Delta OD" : "Intensity (a.u.)") + "</div>"
+    + "  <div class='text-slate-600'>Signal domain</div><div>Raw=intensity | OD/Filtered/Cut=delta OD</div>"
     + "  <div class='text-slate-600'>Wavelengths</div><div>" + wavelengthsText + "</div>"
     + "  <div class='text-slate-600'>Channel distance</div><div>" + distanceText + "</div>"
     + "  <div class='text-slate-600'>Filter</div><div>" + escapeHtml(filterText) + "</div>"
@@ -2079,8 +2079,13 @@ function centerPlotOnEventMarker(markerIndex) {
   selectedMarkerIndex = marker;
   const mappedTime = currentEventTimeByMarkerIndex.get(marker);
   const eventTimeSeconds = Number.isFinite(mappedTime) ? mappedTime : (event.sample / samplingRate);
-  timeLockMarkerIndex = marker;
-  timeLockReferenceSeconds = eventTimeSeconds;
+  if (ENABLE_TIME_LOCK_REFERENCE) {
+    timeLockMarkerIndex = marker;
+    timeLockReferenceSeconds = eventTimeSeconds;
+  } else {
+    timeLockMarkerIndex = null;
+    timeLockReferenceSeconds = null;
+  }
   const durationSeconds = Number.isFinite(currentPlotDurationSeconds) && currentPlotDurationSeconds > 0
     ? currentPlotDurationSeconds
     : getReferenceDurationSeconds();
@@ -2253,7 +2258,6 @@ function applyProtocol(protocol) {
   trimStepEnabled = next.trimStepEnabled;
   if (exclusionTable) exclusionTable.value = next.exclusionText;
   if (trimStepCheckbox) trimStepCheckbox.checked = trimStepEnabled;
-  if (signalDomainSelect) signalDomainSelect.value = next.signalDomain;
   if (dpfWl1Input) dpfWl1Input.value = next.dpfWl1;
   if (dpfWl2Input) dpfWl2Input.value = next.dpfWl2;
 
@@ -2268,8 +2272,11 @@ function applyProtocol(protocol) {
   if (dcRestoreCheckbox) dcRestoreCheckbox.checked = next.filter.dcRestore;
   amplitudePreservationMode = "none";
   if (filterStepCheckbox) filterStepCheckbox.checked = filterStepEnabled;
-  if (plotModeSelect) plotModeSelect.value = next.filter.requestedPlotView;
-  setPlotMode(next.filter.requestedPlotView);
+  const requestedPlotView = next.filter.requestedPlotView === "raw" && next.signalDomain === "delta_od"
+    ? "od"
+    : next.filter.requestedPlotView;
+  if (plotModeSelect) plotModeSelect.value = requestedPlotView;
+  setPlotMode(requestedPlotView);
   updateFilterToggleButtons();
   updatePipelineSummary();
 
@@ -2932,8 +2939,8 @@ function buildPlotRenderModel(windowed, fullDisplay, config) {
     selectedMarkerIndex: Number.isFinite(selectedMarkerIndex) ? Math.round(selectedMarkerIndex) : null,
     hoveredMarkerIndex: Number.isFinite(hoveredMarkerIndex) ? Math.round(hoveredMarkerIndex) : null,
     hoveredSampleIndex: Number.isFinite(hoveredSampleIndex) ? Math.round(hoveredSampleIndex) : null,
-    timeLockMarkerIndex: Number.isFinite(timeLockMarkerIndex) ? Math.round(timeLockMarkerIndex) : null,
-    timeLockReferenceSeconds: Number.isFinite(timeLockReferenceSeconds) ? Number(timeLockReferenceSeconds) : null,
+    timeLockMarkerIndex: ENABLE_TIME_LOCK_REFERENCE && Number.isFinite(timeLockMarkerIndex) ? Math.round(timeLockMarkerIndex) : null,
+    timeLockReferenceSeconds: ENABLE_TIME_LOCK_REFERENCE && Number.isFinite(timeLockReferenceSeconds) ? Number(timeLockReferenceSeconds) : null,
     events: absolutizeWindowEvents(windowed),
     overlays: absolutizeWindowIntervals(windowed)
   };
@@ -2960,6 +2967,7 @@ function rebuildRadioSelections() {
 function initPlotLayout() {
   const tabs = [
     { value: "raw", label: "Raw" },
+    { value: "od", label: "Optical Density" },
     { value: "filtered", label: "Filtered" },
     { value: "trimmed", label: "Cut" },
     { value: "hbo", label: "HbO" },
@@ -3022,15 +3030,43 @@ function createPlotScroller() {
   viewOffsetSlider.className = "plot-time-slider";
   viewOffsetSlider.oninput = () => {
     updateViewNavigationSummary(currentPlotDurationSeconds || getReferenceDurationSeconds());
-    requestUiRedraw();
+    requestUiRedraw({ navigation: true });
   };
+
+  const metaWrap = document.createElement("div");
+  metaWrap.className = "plot-scroll-meta";
 
   viewOffsetSummaryEl = document.createElement("div");
   viewOffsetSummaryEl.className = "plot-scroll-summary";
   viewOffsetSummaryEl.textContent = "Full record";
 
+  const windowRow = document.createElement("div");
+  windowRow.className = "plot-window-inline-row";
+  const windowLbl = document.createElement("label");
+  windowLbl.className = "plot-window-inline-label";
+  windowLbl.textContent = "Window (s)";
+  viewWindowSecondsInput = document.createElement("input");
+  viewWindowSecondsInput.type = "text";
+  viewWindowSecondsInput.inputMode = "decimal";
+  viewWindowSecondsInput.value = "60";
+  viewWindowSecondsInput.className = "plot-window-seconds-input";
+  viewWindowSecondsInput.title = "Visible time span in seconds. Use left/right arrow keys to pan.";
+  viewWindowSecondsInput.oninput = () => {
+    updateViewNavigationSummary(currentPlotDurationSeconds || getReferenceDurationSeconds());
+    requestUiRedraw({ navigation: true });
+  };
+  const navHint = document.createElement("div");
+  navHint.className = "plot-window-inline-hint";
+  navHint.textContent = "Pan: ←/→";
+  windowRow.appendChild(windowLbl);
+  windowRow.appendChild(viewWindowSecondsInput);
+  windowRow.appendChild(navHint);
+
+  metaWrap.appendChild(viewOffsetSummaryEl);
+  metaWrap.appendChild(windowRow);
+
   scroller.appendChild(viewOffsetSlider);
-  scroller.appendChild(viewOffsetSummaryEl);
+  scroller.appendChild(metaWrap);
   return scroller;
 }
 
