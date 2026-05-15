@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "4.0";
-const APP_LAST_UPDATED = "2026-05-15 11:50 EDT";
+const APP_VERSION = "0.4.0";
+const APP_LAST_UPDATED = "2026-05-15 11:53 EDT";
 const PROTOCOL_SCHEMA_VERSION = 1;
 const VERBOSE_LOGGING = true;
 
@@ -3406,5 +3406,6 @@ function formatStatisticNumber(v) {
   if (v === 0) return "0.000e+0";
   return v.toExponential(3);
 }
+
 
 
