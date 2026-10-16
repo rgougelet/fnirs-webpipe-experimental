@@ -1,11 +1,13 @@
 {
   "name": "fnirs-webpipe",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "scripts": {
     "codex": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/codex-session.ps1",
     "report:lines": "node scripts/report-lines.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "ui:test:task": "node scripts/test-task-ui.mjs",
     "serve": "node scripts/dev-server.mjs",
     "ui:capture": "node scripts/capture-ui.mjs",
     "ui:capture:matrix": "node scripts/capture-ui.mjs --preset=matrix",
@@ -16,7 +18,7 @@
     "playwright": "^1.53.0"
   },
   "dependencies": {
-    "jsfive": "^0.4.0",
+    "jsfive": "^0.4.1",
     "uplot": "^1.6.32"
   }
 }

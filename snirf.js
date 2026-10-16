@@ -278,19 +278,24 @@
       const stimPath = joinPath(nirsPath, stimKey);
       const nameLabel = readStringScalarOptional(file, joinPath(stimPath, "name")) || stimKey;
       const stimData = readNumericMatrixOptional(file, joinPath(stimPath, "data"), "stim data");
-      if (!stimData || !stimData.rows || stimData.columns < 1) return;
+      if (!stimData || !stimData.rows) return;
+      if (stimData.columns < 3) throw new Error("SNIRF stim data requires onset, duration, and amplitude columns.");
 
       for (let row = 0; row < stimData.rows; row += 1) {
         const onsetSeconds = stimData.get(row, 0);
-        if (!Number.isFinite(onsetSeconds)) continue;
-        const codeValue = stimData.columns >= 3 ? stimData.get(row, 2) : (stimOrdinal + 1);
-        const fallbackCode = stimOrdinal + 1;
-        const code = Number.isFinite(codeValue) && Math.round(codeValue) !== 0
-          ? Math.round(codeValue)
-          : fallbackCode;
+        const durationSeconds = stimData.get(row, 1);
+        const amplitude = stimData.get(row, 2);
+        if (!Number.isFinite(onsetSeconds) || !Number.isFinite(durationSeconds) || durationSeconds < 0 || !Number.isFinite(amplitude)) {
+          throw new Error("Invalid SNIRF stimulus timing or amplitude in " + stimKey + ".");
+        }
+        const code = stimOrdinal + 1;
         const sample = Math.max(0, Math.round((onsetSeconds - startTimeSeconds) * samplingRate));
         events.push({
           sample,
+          onsetSeconds: onsetSeconds - startTimeSeconds,
+          durationSeconds,
+          amplitude,
+          conditionId: "snirf:" + stimKey,
           code,
           label: sanitizeString(nameLabel) || ("E" + code)
         });
@@ -298,19 +303,11 @@
     });
 
     events.sort((a, b) => {
-      if (a.sample !== b.sample) return a.sample - b.sample;
+      if (a.onsetSeconds !== b.onsetSeconds) return a.onsetSeconds - b.onsetSeconds;
       return a.code - b.code;
     });
 
-    const seen = new Set();
-    const deduped = [];
-    events.forEach(event => {
-      const key = event.sample + "|" + event.code + "|" + event.label;
-      if (seen.has(key)) return;
-      seen.add(key);
-      deduped.push(event);
-    });
-    return deduped;
+    return events;
   }
 
   function parseTimeInfo(file, timePath, sampleCount) {

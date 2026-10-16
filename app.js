@@ -1,8 +1,8 @@
 // app.js
 
-const APP_VERSION = "0.4.0";
-const APP_LAST_UPDATED = "2026-05-15 11:53 EDT";
-const PROTOCOL_SCHEMA_VERSION = 1;
+const APP_VERSION = "0.4.1";
+const APP_LAST_UPDATED = "2026-10-15 21:10 EDT";
+const PROTOCOL_SCHEMA_VERSION = 2;
 const VERBOSE_LOGGING = true;
 
 const input = document.getElementById("input");
@@ -25,6 +25,8 @@ let currentPlotDurationSeconds = 0;
 let samplingRate = null;
 let data = { wl1: null, wl2: null };
 let events = [];
+let taskConfig = { conditions: [] };
+let taskPanel = null;
 let hoveredMarkerIndex = null;
 let hoveredSampleIndex = null;
 let selectedMarkerIndex = null;
@@ -133,6 +135,7 @@ const BUNDLED_SAMPLE_FILES = [
   }
 ];
 const protocolApi = window.fnirsProtocol;
+const taskEventsApi = window.fnirsTaskEvents;
 if (!protocolApi) {
   throw new Error("fnirsProtocol API missing. Ensure protocol.js loads before app.js.");
 }
@@ -561,6 +564,7 @@ function resetAllState() {
   samplingRate = null;
   data = { wl1: null, wl2: null };
   events = [];
+  taskConfig = { conditions: [] };
   hoveredMarkerIndex = null;
   hoveredSampleIndex = null;
   selectedMarkerIndex = null;
@@ -977,6 +981,7 @@ async function loadNirxDatasetFromReaders(parts) {
 /* ================= Controls ================= */
 
 function buildControls() {
+  if (taskPanel) taskPanel.destroy();
   controls.innerHTML = "";
   controls.classList.remove("hidden");
   controls.className = "bg-white rounded p-3 flex flex-col gap-2 border border-slate-200";
@@ -1387,6 +1392,15 @@ function buildControls() {
   accordionStack.className = "flex flex-col gap-2";
   accordionStack.appendChild(createAccordionSection("Import", importDiv, true));
   accordionStack.appendChild(createAccordionSection("Bundled Samples (Optional)", sampleDiv, false, "accordion-section-low-priority"));
+  taskPanel = window.fnirsTaskPanel.create({
+    getRecording: () => data.wl1 && samplingRate ? { label: datasetLabel, events, samplingRate, sampleCount: data.wl1.length } : null,
+    getConfig: () => taskConfig,
+    setConfig: next => {
+      taskConfig = taskEventsApi.normalizeConfig(next);
+      requestUiRedraw({ meta: true });
+    }
+  });
+  accordionStack.appendChild(createAccordionSection("Task Design", taskPanel.element, true));
   if (data.wl1) {
     recordingSummaryContentEl = document.createElement("div");
     recordingSummaryContentEl.className = "pt-2";
@@ -1602,6 +1616,8 @@ function deltaOdToHemoglobin(deltaOdWl1, deltaOdWl2, config) {
 
 function resetProtocolUiOnly() {
   if (!data.wl1) return;
+  taskConfig = { conditions: [] };
+  if (taskPanel) taskPanel.refresh();
 
   currentWavelength = "wl1";
   currentChannel = 0;
@@ -1944,15 +1960,17 @@ function renderMeta() {
   const labelText = (branchTagInput ? branchTagInput.value.trim() : "") || "none";
   let eventRows = "";
   if (!events.length) {
-    eventRows = "<tr><td class='border px-2 py-2 text-slate-600' colspan='3'>No events found</td></tr>";
+    eventRows = "<tr><td class='border px-2 py-2 text-slate-600' colspan='5'>No events found</td></tr>";
   } else {
-    events.forEach(e => {
+    taskEventsApi.resolveEvents(events, taskConfig).forEach(e => {
       const markerIndex = Number.isFinite(e.markerIndex) ? Math.round(e.markerIndex) : null;
       const markerLabel = markerIndex === null ? "-" : String(markerIndex);
       eventRows += "<tr class='event-table-row' data-marker-index='" + markerLabel + "'>"
         + "<td class='border px-2 py-1 text-center font-semibold event-marker-cell' style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + markerLabel + "</td>"
-        + "<td class='border px-2 py-1' style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + (e.sample / samplingRate).toFixed(2) + "</td>"
+        + "<td class='border px-2 py-1'>" + e.onsetSeconds.toFixed(2) + "</td>"
         + "<td class='border px-2 py-1' style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + escapeHtml(eventDisplayLabel(e)) + "</td>"
+        + "<td class='border px-2 py-1'>" + (e.durationSeconds === null ? "?" : e.durationSeconds) + "</td>"
+        + "<td class='border px-2 py-1'>" + e.amplitude + "</td>"
         + "</tr>";
     });
   }
@@ -1999,7 +2017,9 @@ function renderMeta() {
     + "    <tr class='bg-slate-50'>"
     + "      <th class='border px-2 py-1 text-left' style='width: 64px;'>Marker</th>"
     + "      <th class='border px-2 py-1 text-left' style='width: 80px;'>Time (s)</th>"
-    + "      <th class='border px-2 py-1 text-left' style='width: 72px;'>Code</th>"
+    + "      <th class='border px-2 py-1 text-left' style='width: 110px;'>Condition</th>"
+    + "      <th class='border px-2 py-1 text-left'>Duration (s)</th>"
+    + "      <th class='border px-2 py-1 text-left'>Amplitude</th>"
     + "    </tr>"
     + "  </thead>"
     + "  <tbody>"
@@ -2152,7 +2172,8 @@ function getProtocolNormalizationDeps() {
     numberOrNull,
     deriveDefaultHighpassSixDbHz,
     deriveDefaultLowpassSixDbHz,
-    normalizePlotMode
+    normalizePlotMode,
+    ...getProtocolSummaryDeps()
   };
 }
 
@@ -2162,6 +2183,7 @@ function getProtocolBuildDeps() {
     appVersion: APP_VERSION,
     datasetLabel,
     protocolLabel: branchTagInput ? branchTagInput.value.trim() : "",
+    taskConfig,
     currentWavelength,
     currentChannel,
     intervals: parseIntervals(exclusionTable ? exclusionTable.value : ""),
@@ -2249,6 +2271,8 @@ function importProtocol() {
 
 function applyProtocol(protocol) {
   const next = protocolApi.projectProtocolToUiState(protocol, getProtocolProjectionDeps());
+  taskConfig = next.taskConfig;
+  if (taskPanel) taskPanel.refresh();
 
   if (branchTagInput) branchTagInput.value = next.protocolLabel;
   if (notesInput) notesInput.value = next.notes;
@@ -2651,49 +2675,11 @@ function inferMatrixChannelCount() {
 }
 
 function parseEvents(t) {
-  return t.split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(line => line && !line.startsWith("#"))
-    .map(line => {
-      const p = line.split(/\s+/).map(Number).filter(Number.isFinite);
-      if (p.length < 2) return null;
-      const sample = Math.round(p[0]);
-      const markerFields = p.slice(1);
-
-      if (markerFields.length === 1) {
-        const code = Math.round(markerFields[0]);
-        return { sample, code, label: "E" + code };
-      }
-
-      const decoded = decodeBinaryMarkerFields(markerFields);
-      if (!decoded.code) return null;
-
-      return {
-        sample,
-        code: decoded.code,
-        label: "E" + decoded.code
-      };
-    })
-    .filter(Boolean);
+  return taskEventsApi.parseNirxEvents(t);
 }
 
 function normalizeEventsWithMarkerIndices(eventsIn) {
-  if (!Array.isArray(eventsIn) || !eventsIn.length) return [];
-  return eventsIn
-    .filter(event => event && Number.isFinite(event.sample))
-    .map((event, idx) => ({
-      sample: Math.max(0, Math.round(Number(event.sample))),
-      code: Number.isFinite(event.code) ? Math.round(Number(event.code)) : null,
-      label: typeof event.label === "string" ? event.label : "",
-      markerIndex: idx + 1
-    }));
-}
-
-function decodeBinaryMarkerFields(markerFields) {
-  return markerFields.reduce((out, value, idx) => {
-    if (value !== 0) out.code += Math.pow(2, idx);
-    return out;
-  }, { code: 0 });
+  return taskEventsApi.normalizeEvents(eventsIn, samplingRate);
 }
 
 function parseIntervals(text) {
@@ -2716,6 +2702,7 @@ function adjustEvents(eventsIn, intervals) {
   if (!eventsIn.length) return [];
   if (!intervals.length) {
     return eventsIn.map(e => ({
+      ...e,
       time: e.sample / samplingRate,
       code: e.code,
       label: eventDisplayLabel(e),
@@ -2736,6 +2723,7 @@ function adjustEvents(eventsIn, intervals) {
 
     if (!excluded) {
       out.push({
+        ...e,
         time: t - shift,
         code: e.code,
         label: eventDisplayLabel(e),
@@ -2747,6 +2735,8 @@ function adjustEvents(eventsIn, intervals) {
 }
 
 function eventDisplayLabel(event) {
+  const setting = event && taskConfig.conditions.find(item => item.id === taskEventsApi.conditionId(event));
+  if (setting && setting.label) return setting.label;
   if (event && typeof event.label === "string" && event.label.trim()) return event.label.trim();
   if (event && Number.isFinite(event.code)) return "E" + event.code;
   return "E?";
@@ -2883,6 +2873,7 @@ function sliceDisplayByTimeWindow(display, fs, requestedStartSeconds, requestedW
   safe.events = safe.events
     .filter(e => Number.isFinite(e.time) && e.time >= startSeconds && e.time <= endSeconds)
     .map(e => ({
+      ...e,
       time: e.time - startSeconds,
       code: e.code,
       label: eventDisplayLabel(e),
@@ -2907,6 +2898,7 @@ function formatWindowRangeLabel(startSeconds, spanSeconds) {
 function absolutizeWindowEvents(windowed) {
   if (!windowed || !Array.isArray(windowed.events)) return [];
   return windowed.events.map(event => ({
+    ...event,
     time: event.time + windowed.startSeconds,
     code: event.code,
     label: event.label,

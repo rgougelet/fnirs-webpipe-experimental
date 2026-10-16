@@ -157,4 +157,20 @@ npm run ui:install
 ## Status
 Active development.
 
+## Task design and GLM preview (v0.4.1)
+
+Open **Task Design > Open task design** to label conditions, set missing
+NIRx event durations, and view HRF-convolved condition regressors. SNIRF
+stimulus onset, duration, and amplitude are preserved; conditions are identified
+by stimulus group. Blank overrides retain imported durations; 0 means an impulse.
+Task settings are saved with protocols and protocol links.
+
+The **Synthetic example** is an isolated illustrative six-block task. Design
+CSVs include condition regressors and an intercept on the displayed preview
+grid. Designs use the original recording clock, independently of cut intervals.
+This increment previews regressors; it does not fit a GLM or produce statistics.
+
+See [task-design-preview.md](docs/task-design-preview.md) for HRF conventions,
+references, and limitations. Verify with `npm test` and `npm run ui:test:task`.
+
 License: CC BY-NC 4.0

@@ -1,0 +1,36 @@
+.task-panel p { margin: 4px 0 10px; font-size: 0.84rem; }
+.task-dialog {
+  box-sizing: border-box; width: min(1060px, 94vw); max-height: 92vh;
+  overflow: auto; border: 1px solid #94a3b8; border-radius: 14px;
+  padding: 22px; color: #0f172a; background: #fff;
+}
+.task-dialog::backdrop { background: rgba(15, 23, 42, 0.68); }
+.task-dialog-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.task-dialog-header h2 { margin: 0; font-size: 1.35rem; }
+.task-toolbar { display: flex; gap: 10px; margin: 16px 0; }
+.task-help { color: #475569; font-size: 0.82rem; line-height: 1.45; }
+.task-form { overflow-x: auto; }
+.task-form table { width: 100%; border-collapse: collapse; }
+.task-form th, .task-form td { padding: 8px; text-align: left; border-bottom: 1px solid #cbd5e1; }
+.task-form th { font-size: 0.82rem; }
+.task-form input { box-sizing: border-box; padding: 8px; border: 1px solid #94a3b8; border-radius: 6px; width: 100%; min-width: 100px; }
+.task-form input:invalid { border-color: #dc2626; }
+.task-form small { display: block; color: #64748b; margin-top: 4px; }
+.task-status { font-size: 0.85rem; font-weight: 600; }
+.task-error { color: #b91c1c; }
+.design-plot svg { display: block; width: 100%; height: auto; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; }
+.design-plot text { font: 12px system-ui, sans-serif; fill: currentColor; }
+.design-grid { stroke: #cbd5e1; stroke-width: 1; }
+.design-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.8rem; margin: 10px 0; }
+.design-legend span { border-left: 4px solid #64748b; padding-left: 6px; }
+.task-dialog .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.task-dialog .btn { color: #0f172a; background: #f8fafc; border-color: #94a3b8; }
+.task-dialog .btn:hover { background: #e0f2fe; }
+body.theme-dark .task-dialog { color: #e2e8f0; background: #0f172a; border-color: #475569; }
+body.theme-dark .task-help, body.theme-dark .task-form small { color: #cbd5e1; }
+body.theme-dark .task-form input { color: #f1f5f9; background: #1e293b; border-color: #64748b; }
+body.theme-dark .task-error { color: #fca5a5; }
+body.theme-dark .task-dialog .btn { color: #e2e8f0; background: #1e293b; border-color: #64748b; }
+body.theme-dark .task-dialog .btn:hover { background: #334155; }
+body.theme-dark .design-plot svg { background: #1e293b; border-color: #475569; }
+body.theme-dark .design-grid { stroke: #475569; }

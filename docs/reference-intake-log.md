@@ -1,5 +1,22 @@
 # Reference Intake Log
 
+## Batch: 2026-10-15 (task design preview)
+
+- SNIRF specification: https://github.com/fNIRS/snirf
+  - Version pin: `384bb0e2ae1c076774c1a2edcbbb5d28cc001554`.
+  - Scope: stimulus onset/duration/amplitude semantics and condition groups.
+- SPM: https://github.com/spm/spm
+  - Version pin: `8bad2aac8c35b42cc6ea913250953928461a8a99`.
+  - Scope: canonical HRF parameter definitions; method documentation accessed
+    2026-10-15 at https://www.fil.ion.ucl.ac.uk/spm/docs/tutorials/beginners/haemodynamic_modelling/.
+- Usage mode: `reference_only`. Formulas and file semantics were independently
+  implemented; no reference source code was copied or adapted.
+- License status: no code reuse rights relied upon. Any future adaptation
+  requires separate source-license review under `docs/reference-policy.md`.
+- Applied in `snirf.js`, `task-events.js`, and `design-matrix.js`.
+- Normalization, sampling, and model limits are documented in
+  `docs/task-design-preview.md`.
+
 ## Batch: 2026-03-04 (5 ZIPs from `references/`)
 
 ### 1) `ant_av_eeg-master.zip`
