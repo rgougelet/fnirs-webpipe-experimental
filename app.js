@@ -1,7 +1,7 @@
 // app.js
 
-const APP_VERSION = "0.5.1";
-const APP_LAST_UPDATED = "2026-10-26 14:05 EDT";
+const APP_VERSION = "0.5.2";
+const APP_LAST_UPDATED = "2026-10-26 14:31 EDT";
 const PROTOCOL_SCHEMA_VERSION = 3;
 const VERBOSE_LOGGING = true;
 
@@ -28,6 +28,7 @@ let data = { wl1: null, wl2: null };
 let events = [];
 let taskConfig = { conditions: [] };
 let taskPanel = null;
+let importPanel = null;
 let glmPanel = null;
 let glmConfig = { noiseModel: "ols", drift: "linear" };
 let hoveredMarkerIndex = null;
@@ -121,22 +122,6 @@ const DEFAULT_DPF = {
   wl1: 6.0,
   wl2: 6.0
 };
-const BUNDLED_SAMPLE_FILES = [
-  {
-    id: "nirx_demo_zip",
-    label: "NIRx demo ZIP",
-    path: "samples/nirx-demo-2026-02-18_002.zip",
-    kind: "zip",
-    sizeBytes: 632975
-  },
-  {
-    id: "homer3_test_snirf",
-    label: "Homer3 test SNIRF",
-    path: "samples/homer3-test.snirf",
-    kind: "snirf",
-    sizeBytes: 7203050
-  }
-];
 const protocolApi = window.fnirsProtocol;
 const taskEventsApi = window.fnirsTaskEvents;
 if (!protocolApi) {
@@ -152,7 +137,6 @@ const MBLL_EXTINCTION_BY_WAVELENGTH = {
 
 initTheme();
 initPlotMode();
-input.addEventListener("change", handleInput);
 initPlotLayout();
 buildControls();
 renderAppLastUpdated();
@@ -386,64 +370,6 @@ async function loadSelectedFiles(fileList, options) {
     datasetLabel = hdr ? stem(hdr.name) : (files[0] ? stem(files[0].name) : "unknown-dataset");
     debugLog("handleInput:mode", { inputTypeLabel, datasetLabel });
     await loadFiles(files);
-  }
-}
-
-function formatSampleSize(bytes) {
-  const numericBytes = Number(bytes);
-  if (!Number.isFinite(numericBytes) || numericBytes < 0) return "?";
-  if (numericBytes < 1024) return Math.round(numericBytes) + " B";
-  if (numericBytes < 1024 * 1024) return (numericBytes / 1024).toFixed(1) + " KB";
-  return (numericBytes / (1024 * 1024)).toFixed(2) + " MB";
-}
-
-function findBundledSampleById(sampleId) {
-  return BUNDLED_SAMPLE_FILES.find(sample => sample.id === sampleId) || null;
-}
-
-async function loadBundledSampleById(sampleId) {
-  const sample = findBundledSampleById(sampleId);
-  if (!sample) {
-    metaDiv.textContent = "Bundled sample not found: " + sampleId;
-    return;
-  }
-
-  resetUiOnly();
-  clearDebugLog();
-  debugLog("loadSample:start", {
-    sampleId: sample.id,
-    path: sample.path,
-    kind: sample.kind,
-    declaredSizeBytes: sample.sizeBytes
-  });
-
-  try {
-    const response = await fetch(sample.path + "?v=" + encodeURIComponent(APP_VERSION), { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error("HTTP " + response.status + " while loading " + sample.path);
-    }
-    const blob = await response.blob();
-    const filename = basename(sample.path);
-    const file = new File([blob], filename, {
-      type: blob.type || "application/octet-stream",
-      lastModified: Date.now()
-    });
-    debugLog("loadSample:fetched", {
-      sampleId: sample.id,
-      name: file.name,
-      sizeBytes: file.size,
-      contentType: response.headers.get("content-type") || null
-    });
-    await loadSelectedFiles([file], {
-      source: "bundled-sample",
-      sampleId: sample.id,
-      samplePath: sample.path,
-      route: "bundled-sample"
-    });
-  } catch (err) {
-    const message = err && err.message ? err.message : String(err);
-    metaDiv.textContent = "Failed to load bundled sample: " + message;
-    debugError("loadSample:failed", err);
   }
 }
 
@@ -1064,63 +990,15 @@ function buildControls() {
   protocolDiv.appendChild(summaryTitle);
   protocolDiv.appendChild(protocolSummaryEl);
 
-  const importDiv = document.createElement("div");
-  importDiv.className = "pt-2 flex flex-col gap-2";
-  const importHelp = document.createElement("div");
-  importHelp.className = "text-xs text-slate-600";
-  importHelp.textContent = "Primary import path: load a NIRx ZIP/folder set or a SNIRF file.";
-  const importSubHelp = document.createElement("div");
-  importSubHelp.className = "text-xs text-slate-600 leading-tight";
-  importSubHelp.textContent = "Use this for normal analysis runs. Bundled samples are listed separately below.";
-  const sampleDiv = document.createElement("div");
-  sampleDiv.className = "sample-loader-panel";
-  const sampleLead = document.createElement("div");
-  sampleLead.className = "sample-loader-lead";
-  sampleLead.textContent = "Bundled sample files (demo/testing)";
-  const sampleRow = document.createElement("div");
-  sampleRow.className = "grid grid-cols-[1fr_auto] gap-2 items-center";
-  const sampleSelect = document.createElement("select");
-  sampleSelect.className = "sample-loader-select p-2 border rounded bg-white w-full text-sm";
-  const samplePlaceholder = document.createElement("option");
-  samplePlaceholder.value = "";
-  samplePlaceholder.textContent = "Choose bundled sample...";
-  sampleSelect.appendChild(samplePlaceholder);
-  BUNDLED_SAMPLE_FILES.forEach(sample => {
-    const option = document.createElement("option");
-    option.value = sample.id;
-    option.textContent = sample.label + " (" + formatSampleSize(sample.sizeBytes) + ")";
-    sampleSelect.appendChild(option);
-  });
-  const loadSampleBtn = document.createElement("button");
-  loadSampleBtn.type = "button";
-  loadSampleBtn.className = "btn sample-loader-btn";
-  loadSampleBtn.textContent = "Load sample";
-  loadSampleBtn.onclick = async () => {
-    if (!sampleSelect.value) return;
-    const previousLabel = loadSampleBtn.textContent;
-    loadSampleBtn.disabled = true;
-    loadSampleBtn.textContent = "Loading...";
-    try {
-      await loadBundledSampleById(sampleSelect.value);
-    } finally {
-      loadSampleBtn.disabled = false;
-      loadSampleBtn.textContent = previousLabel;
+  if (!importPanel) importPanel = window.fnirsImportPanel.create({
+    input, meta: metaDiv, version: APP_VERSION,
+    onLoad: async (files, context) => {
+      await loadSelectedFiles(files, context);
+      return context.protocol ? metaDiv.textContent.startsWith("Protocol imported from ZIP.") :
+        !!data.wl1 && !metaDiv.textContent;
     }
-  };
-  sampleRow.appendChild(sampleSelect);
-  sampleRow.appendChild(loadSampleBtn);
-  const sampleHelp = document.createElement("div");
-  sampleHelp.className = "sample-loader-help";
-  sampleHelp.textContent = "Served from /samples and kept under 10 MB for portable distribution tests.";
-  sampleDiv.appendChild(sampleLead);
-  sampleDiv.appendChild(sampleRow);
-  sampleDiv.appendChild(sampleHelp);
-  metaDiv.className = "text-sm text-slate-600";
-  input.className = "block w-full p-2 border rounded bg-white";
-  importDiv.appendChild(input);
-  importDiv.appendChild(importHelp);
-  importDiv.appendChild(importSubHelp);
-  importDiv.appendChild(metaDiv);
+  });
+  const importDiv = importPanel.element;
 
   const debugDiv = document.createElement("div");
   debugDiv.className = "pt-2 flex flex-col gap-2";
@@ -1403,7 +1281,6 @@ function buildControls() {
   const accordionStack = document.createElement("div");
   accordionStack.className = "flex flex-col gap-2";
   accordionStack.appendChild(createAccordionSection("Import", importDiv, true));
-  accordionStack.appendChild(createAccordionSection("Bundled Samples (Optional)", sampleDiv, false, "accordion-section-low-priority"));
   taskPanel = window.fnirsTaskPanel.create({
     getRecording: () => data.wl1 && samplingRate ? { label: datasetLabel, events, samplingRate, sampleCount: data.wl1.length } : null,
     getConfig: () => taskConfig,

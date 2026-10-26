@@ -1,0 +1,36 @@
+.import-browser { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; min-width: 0; }
+.import-browser label { font-size: 12px; font-weight: 600; color: #475569; }
+.import-path-form { display: flex; gap: 6px; min-width: 0; }
+.import-path-form input { min-width: 0; width: 100%; flex: 1; padding: 7px; border: 1px solid #94a3b8; border-radius: 5px; background: #fff; color: #0f172a; font: 12px/1.5 Consolas, monospace; }
+.import-toolbar { display: flex; flex-wrap: wrap; gap: 6px; }
+.import-toolbar .btn { font-size: 12px; }
+.import-toolbar [data-root] { font-family: Consolas, monospace; }
+.import-toolbar [aria-pressed="true"] { background: #e0f2fe; border-color: #0284c7; color: #075985; }
+.import-list { border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; max-height: 270px; overflow: auto; }
+.import-file { padding: 9px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.import-file + .import-file { border-top: 1px solid #cbd5e1; }
+.import-filename { display: block; max-width: 100%; padding: 2px 0; border: 0; background: transparent; color: #0369a1; font: 12px/1.5 Consolas, monospace; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.import-filename:hover { text-decoration: underline; }
+.import-filename:disabled { cursor: default; color: #475569; opacity: 1; text-decoration: none; }
+.import-file-detail { color: #64748b; font-size: 11px; }
+.import-file-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.import-file-actions .btn { font-size: 11px; padding: 3px 7px; }
+.import-empty { padding: 12px; }
+.import-help, .import-status, .import-loaded, .import-empty, .import-error { margin: 0; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.import-help, .import-empty { color: #64748b; }
+.import-status { color: #475569; }
+.import-loaded { font: 11px/1.5 Consolas, monospace; color: #0369a1; }
+.import-error { color: #b91c1c; }
+.import-status:empty, .import-loaded:empty, .import-error:empty { display: none; }
+.import-browser [hidden] { display: none !important; }
+.import-browser :focus-visible { outline: 2px solid #0284c7; outline-offset: 2px; }
+.import-browser[aria-busy="true"] { cursor: progress; }
+.import-browser[aria-busy="true"] button { opacity: .65; }
+body.theme-dark .import-browser label, body.theme-dark .import-status { color: #cbd5e1; }
+body.theme-dark .import-path-form input, body.theme-dark .import-list { background: #0f172a; color: #e2e8f0; border-color: #475569; }
+body.theme-dark .import-file + .import-file { border-color: #334155; }
+body.theme-dark .import-filename, body.theme-dark .import-loaded { color: #7dd3fc; }
+body.theme-dark .import-filename:disabled { color: #cbd5e1; }
+body.theme-dark .import-help, body.theme-dark .import-file-detail, body.theme-dark .import-empty { color: #94a3b8; }
+body.theme-dark .import-toolbar [aria-pressed="true"] { background: #0c4a6e; border-color: #38bdf8; color: #e0f2fe; }
+body.theme-dark .import-error { color: #fca5a5; }

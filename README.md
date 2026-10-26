@@ -83,6 +83,13 @@ Open the web app and load either:
 - a NIRx dataset (`.zip`, or `.hdr/.wl1/.wl2` with optional `.evt`/`probeInfo.mat`)
 - a SNIRF file (`.snirf`, first-pass CW intensity support)
 
+The **Import** file browser combines bundled and local data. Open a file in
+`samples/`, or use **Browse files** / **Browse folder** to populate `local/`.
+The source path accepts available file and folder paths. **Browse ZIP** exposes
+archive contents; **Download** saves the original file or an archive member.
+Opening a NIRx header loads matching companion files from the same folder.
+See [importing-data.md](docs/importing-data.md) for details.
+
 ## Local UI workflow
 For faster visual iteration, use the npm wrappers rather than calling Playwright or the capture script directly. This keeps approvals reusable and avoids one-off Chromium execution prompts.
 
