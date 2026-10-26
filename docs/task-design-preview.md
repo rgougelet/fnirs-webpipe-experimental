@@ -39,9 +39,9 @@ column per condition and a constant intercept are exported in the design CSV.
 The CSV contains preview regressors on that grid, not fitted signal estimates.
 
 Excluded intervals do not compress or alter the design's original time axis.
-This first increment does not fit a GLM or apply preprocessing to regressors.
-Subsequent estimation must align data and design on the original clock, apply
-matching temporal operations, and define nuisance regressors and error models.
+This quick preview does not apply preprocessing. The **Design Matrix** and
+**GLM Fit** tabs use full-resolution data, matching temporal operations, and
+explicit nuisance regressors. See [glm-fitting.md](glm-fitting.md).
 The illustrative HRF is not a fitted or validated individual fNIRS response.
 
 ## References and verification

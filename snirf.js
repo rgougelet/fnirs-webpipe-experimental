@@ -66,6 +66,7 @@
       meta: {
         nirsPath,
         dataPath,
+        glmIssue: glmReadinessIssue(file, nirsPath, timeInfo, activeMeasurements),
         totalColumns: dataMatrix.columns,
         mappedColumns: activeMeasurements.length,
         pairedChannels: channelBuild.channels.length,
@@ -333,8 +334,20 @@
 
     return {
       samplingRate,
-      startTimeSeconds: Number(timeVector[0]) || 0
+      startTimeSeconds: Number(timeVector[0]) || 0,
+      uniform: timeVector.every((time, i) => Number.isFinite(time)
+        && Math.abs(time - timeVector[0] - i * dt) <= Math.max(1e-6, dt * 0.001))
     };
+  }
+
+  function glmReadinessIssue(file, nirsPath, timeInfo, measurements) {
+    if (!timeInfo.uniform) return "GLM requires uniformly sampled SNIRF data. Resample the recording before fitting.";
+    if (measurements.some(entry => entry.dataType !== 1)) return "GLM currently requires SNIRF CW intensity data (dataType 1).";
+    const unit = name => (readStringScalarOptional(file, joinPath(nirsPath, "metaDataTags/" + name)) || "").toLowerCase();
+    const time = unit("TimeUnit"), length = unit("LengthUnit");
+    if (time && !["s", "sec", "second", "seconds"].includes(time)) return "GLM currently requires SNIRF times in seconds. Imported TimeUnit: " + time + ".";
+    if (length && !["mm", "millimeter", "millimeters", "millimetre", "millimetres"].includes(length)) return "GLM currently requires SNIRF probe positions in millimeters. Imported LengthUnit: " + length + ".";
+    return "";
   }
 
   function estimatePositiveStep(values) {

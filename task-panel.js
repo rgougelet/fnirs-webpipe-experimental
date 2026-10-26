@@ -31,7 +31,7 @@
     status.setAttribute("role", "status");
     const plot = element("div", undefined, "design-plot");
     const model = element("p", "Double-gamma HRF: delays 6/16 s, dispersions 1/1, ratio 6, support 32 s; unit integral. Preview uses the original recording clock; cut intervals do not shift events.", "task-help");
-    const limit = element("p", "Regressor preview only. Parameter estimation, nuisance modeling, and statistical inference are not included.", "task-help");
+    const limit = element("p", "This quick preview uses a reduced grid. Open the Design Matrix and GLM Fit tabs for full-resolution HbO/HbR fitting.", "task-help");
     const csvButton = button("Download design CSV", () => {
       if (!currentDesign) return;
       const blob = new Blob([root.fnirsDesign.designCsv(currentDesign)], { type: "text/csv;charset=utf-8" });
@@ -154,7 +154,7 @@
       if (dialog.open) selectSource(demoMode);
     }
     refresh();
-    return { element: container, refresh, destroy: () => { if (dialog.open) dialog.close(); container.remove(); } };
+    return { element: container, refresh, open: () => { selectSource(!options.getRecording()); dialog.showModal(); }, destroy: () => { if (dialog.open) dialog.close(); container.remove(); } };
   }
   root.fnirsTaskPanel = { create };
 })(window);

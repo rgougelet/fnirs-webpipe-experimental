@@ -156,7 +156,7 @@ function resolveEdgePadding(length, fs, spec, stageCount) {
   }
   const requested = Math.max(10.0, seconds);
   const intrinsic = Math.max(1, 3 * Math.max(1, Number(stageCount) || 1));
-  const samples = Math.max(intrinsic, Math.round(requested * fs));
+  const samples = Math.min(length - 1, Math.max(intrinsic, Math.round(requested * fs)));
   return { enabled: samples > 0, samples: samples };
 }
 

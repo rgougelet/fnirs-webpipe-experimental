@@ -28,7 +28,7 @@
     return (gammaCdf(u, 6) - gammaCdf(u, 16) / 6) / area;
   }
 
-  function buildDesign(events, samplingRate, sampleCount) {
+  function buildDesign(events, samplingRate, sampleCount, options = {}) {
     if (!Number.isFinite(samplingRate) || samplingRate <= 0 || !Number.isInteger(sampleCount) || sampleCount < 1) {
       throw new Error("A valid sampling rate and sample count are required.");
     }
@@ -39,8 +39,11 @@
         || !Number.isFinite(event.amplitude)) throw new Error("Every event needs a finite onset, amplitude, and nonnegative duration.");
       if (!groups.has(event.conditionId)) groups.set(event.conditionId, event.label || event.conditionId);
     });
-    if (groups.size > 64 || sampleCount > 20000 || (groups.size + 1) * sampleCount > 1000000) {
-      throw new Error("This design exceeds the preview size limit. Use a coarser preview grid.");
+    const fitting = !!options.fitting;
+    if (groups.size > 64 || sampleCount > (fitting ? 200000 : 20000)
+      || (groups.size + 2) * sampleCount > (fitting ? 5000000 : 1000000)
+      || (fitting && sampleCount * (groups.size + 2) ** 2 > 100000000)) {
+      throw new Error(fitting ? "This full-resolution design exceeds the GLM size limit." : "This design exceeds the preview size limit. Use a coarser preview grid.");
     }
     const columns = [...groups].map(([id, label]) => ({ id, label, values: new Float64Array(sampleCount) }));
     const byId = new Map(columns.map(column => [column.id, column]));
@@ -55,7 +58,7 @@
       const first = Math.max(0, Math.ceil(onset * samplingRate));
       const last = Math.min(sampleCount - 1, Math.ceil((onset + duration + SUPPORT) * samplingRate));
       operations += Math.max(0, last - first + 1);
-      if (operations > 5000000) throw new Error("Too many events for this preview grid.");
+      if (operations > (fitting ? 20000000 : 5000000)) throw new Error("Too many events for this design grid.");
       const values = byId.get(event.conditionId).values;
       for (let i = first; i <= last; i += 1) {
         const elapsed = times[i] - onset;
@@ -97,4 +100,4 @@
   }
 
   root.fnirsDesign = { hrf, hrfIntegral, buildDesign, syntheticExample, designCsv };
-})(window);
+})(globalThis.window || globalThis);

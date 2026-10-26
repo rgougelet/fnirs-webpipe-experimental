@@ -75,4 +75,4 @@
   }
 
   root.fnirsTaskEvents = { conditionId, normalizeEvents, parseNirxEvents, normalizeConfig, listConditions, resolveEvents };
-})(window);
+})(globalThis.window || globalThis);

@@ -84,7 +84,8 @@ This file tracks nontrivial third-party code adaptations/reuse.
 - License: Homer3 Software License Agreement / BSD-2-Clause-like
 - Usage mode: `adapt_with_citation`
 - Files in this repo:
-  - `app.js`
+  - `app.js` (extinction coefficients)
+  - `physiology.js` (shared OD conversion and MBLL solve)
 - Summary of reused/adapted parts:
   - Method-level adaptation of `hmrR_Intensity2OD.m` for delta optical density
   - Coefficient conventions and MBLL solve structure from `hmrR_OD2Conc.m`

@@ -157,20 +157,25 @@ npm run ui:install
 ## Status
 Active development.
 
-## Task design and GLM preview (v0.4.1)
+## Task design and GLM fitting (v0.5.0)
 
-Open **Task Design > Open task design** to label conditions, set missing
-NIRx event durations, and view HRF-convolved condition regressors. SNIRF
-stimulus onset, duration, and amplitude are preserved; conditions are identified
-by stimulus group. Blank overrides retain imported durations; 0 means an impulse.
-Task settings are saved with protocols and protocol links.
+Open **Task Design > Open task design** to label conditions and supply event
+durations. The **Design Matrix** tab displays the actual full-resolution
+matrix, with a heatmap, exact values, rank checks, and CSV export.
 
-The **Synthetic example** is an isolated illustrative six-block task. Design
-CSVs include condition regressors and an intercept on the displayed preview
-grid. Designs use the original recording clock, independently of cut intervals.
-This increment previews regressors; it does not fit a GLM or produce statistics.
+**Fit GLM** estimates HbO and HbR task coefficients for the selected channel
+using ordinary least squares. **GLM Fit** shows coefficients, observed/fitted
+traces, residuals, and diagnostics. Matching filters and cut exclusions are
+applied without shifting the event clock. Optional linear drift is saved
+with the protocol. **Synthetic example** provides known responses to try.
 
-See [task-design-preview.md](docs/task-design-preview.md) for HRF conventions,
-references, and limitations. Verify with `npm test` and `npm run ui:test:task`.
+The GLM ZIP includes the design, coefficients, fitted traces, and model
+settings. This is exploratory fitting without prewhitening or statistical
+inference.
+
+See [glm-fitting.md](docs/glm-fitting.md) for the workflow, model, exports,
+limits, and verification; [task-design-preview.md](docs/task-design-preview.md)
+describes event/HRF conventions. Run `npm test`, `npm run ui:test:task`, and
+`npm run ui:test:glm`.
 
 License: CC BY-NC 4.0

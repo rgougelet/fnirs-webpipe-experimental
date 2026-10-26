@@ -5,7 +5,7 @@ import test from "node:test";
 
 const sandbox = vm.createContext({ window: {}, btoa: value => Buffer.from(value, "binary").toString("base64"),
   atob: value => Buffer.from(value, "base64").toString("binary") });
-for (const file of ["task-events.js", "design-matrix.js", "protocol.js", "snirf.js"]) {
+for (const file of ["task-events.js", "design-matrix.js", "glm-config.js", "protocol.js", "snirf.js"]) {
   vm.runInContext(readFileSync(new URL("../" + file, import.meta.url), "utf8"), sandbox, { filename: file });
 }
 const { fnirsTaskEvents: task, fnirsDesign: design, fnirsProtocol: protocol, fnirsSnirf: snirf } = sandbox.window;
@@ -20,13 +20,15 @@ test("NIRx binary markers retain codes and require explicit durations", () => {
   assert.throws(() => design.buildDesign(events, 4, 100), /duration/);
 });
 
-function fakeSnirf(stimRows = [[11.125, 2.5, 0.25], [11.125, 3, -0.5], [12, 0, 0]]) {
+function fakeSnirf(stimRows = [[11.125, 2.5, 0.25], [11.125, 3, -0.5], [12, 0, 0]], options = {}) {
   const data = new Map();
   const put = (path, value, shape = [1]) => data.set(path, { value, shape });
   put("nirs/data1/dataTimeSeries", Array.from({ length: 40 }, () => [10, 20]), [40, 2]);
-  put("nirs/data1/time", Array.from({ length: 40 }, (_, i) => 10 + i / 4), [40]);
+  put("nirs/data1/time", options.times || Array.from({ length: 40 }, (_, i) => 10 + i / 4), [40]);
+  if (options.timeUnit) put("nirs/metaDataTags/TimeUnit", options.timeUnit);
+  if (options.lengthUnit) put("nirs/metaDataTags/LengthUnit", options.lengthUnit);
   for (let i = 1; i <= 2; i += 1) {
-    for (const [name, value] of [["sourceIndex", 1], ["detectorIndex", 1], ["wavelengthIndex", i], ["dataType", 1]]) {
+    for (const [name, value] of [["sourceIndex", 1], ["detectorIndex", 1], ["wavelengthIndex", i], ["dataType", options.dataType ?? 1]]) {
       put(`nirs/data1/measurementList${i}/${name}`, value);
     }
   }
@@ -144,4 +146,19 @@ test("task settings survive file and URL protocol round trips; legacy protocols 
   const urlRoundTrip = protocol.parseProtocolFromHash("#protocol=" + protocol.encodeForUrl(shared), deps);
   assert.deepEqual(plain(urlRoundTrip.taskConfig), taskConfig);
   assert.deepEqual(plain(protocol.normalizeProtocol({ protocolSchemaVersion: 1 }, deps).taskConfig), { conditions: [] });
+});
+
+test("SNIRF marks irregular clocks, non-intensity data and unsupported units as unavailable for GLM", () => {
+  const regular = Array.from({ length: 40 }, (_, i) => 10 + i / 4);
+  for (const [options, expected] of [
+    [{ times: regular.map((value, i) => value + (i === 30 ? 0.05 : 0)) }, /uniform/],
+    [{ dataType: 99999 }, /CW intensity/],
+    [{ timeUnit: "ms" }, /seconds/],
+    [{ lengthUnit: "cm" }, /millimeters/]
+  ]) {
+    sandbox.window.hdf5 = { File: fakeSnirf(undefined, options) };
+    assert.match(snirf.parseSnirfArrayBuffer(new ArrayBuffer(1)).meta.glmIssue, expected);
+  }
+  sandbox.window.hdf5 = { File: fakeSnirf() };
+  assert.equal(snirf.parseSnirfArrayBuffer(new ArrayBuffer(1)).meta.glmIssue, "");
 });

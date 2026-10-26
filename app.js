@@ -1,8 +1,8 @@
 // app.js
 
-const APP_VERSION = "0.4.1";
-const APP_LAST_UPDATED = "2026-10-15 21:10 EDT";
-const PROTOCOL_SCHEMA_VERSION = 2;
+const APP_VERSION = "0.5.0";
+const APP_LAST_UPDATED = "2026-10-26 13:46 EDT";
+const PROTOCOL_SCHEMA_VERSION = 3;
 const VERBOSE_LOGGING = true;
 
 const input = document.getElementById("input");
@@ -23,10 +23,13 @@ let plotController = null;
 let currentPlotDurationSeconds = 0;
 
 let samplingRate = null;
+let recordingGlmIssue = "";
 let data = { wl1: null, wl2: null };
 let events = [];
 let taskConfig = { conditions: [] };
 let taskPanel = null;
+let glmPanel = null;
+let glmConfig = { noiseModel: "ols", drift: "linear" };
 let hoveredMarkerIndex = null;
 let hoveredSampleIndex = null;
 let selectedMarkerIndex = null;
@@ -561,10 +564,16 @@ function setPlotMode(mode) {
 }
 
 function resetAllState() {
+  if (glmPanel) glmPanel.invalidate("Load a recording or choose the synthetic example.");
   samplingRate = null;
+  recordingGlmIssue = "";
+  filterStepEnabled = false;
+  trimStepEnabled = true;
+  amplitudePreservationMode = "none";
   data = { wl1: null, wl2: null };
   events = [];
   taskConfig = { conditions: [] };
+  glmConfig = window.fnirsGlmConfig.normalize();
   hoveredMarkerIndex = null;
   hoveredSampleIndex = null;
   selectedMarkerIndex = null;
@@ -598,6 +607,8 @@ function resetAllState() {
 
 function normalizePlotMode(mode) {
   switch (mode) {
+    case "design":
+    case "glm":
     case "od":
     case "filtered":
     case "trimmed":
@@ -696,6 +707,7 @@ async function loadSnirf(snirfFile) {
 
     const parsed = window.fnirsSnirf.parseSnirfArrayBuffer(arrayBuffer, { name: snirfFile.name });
     samplingRate = parsed.samplingRate;
+    recordingGlmIssue = parsed.meta?.glmIssue || "";
     wavelengthsNm = Array.isArray(parsed.wavelengthsNm) && parsed.wavelengthsNm.length >= 2
       ? parsed.wavelengthsNm.slice(0, 2)
       : [760, 850];
@@ -1485,7 +1497,7 @@ function updateFilterToggleButtons() {
 
 function getSignalDomainForPlotMode(mode) {
   if (mode === "raw") return "intensity";
-  if (mode === "od" || mode === "filtered" || mode === "trimmed" || isHemoglobinPlotMode(mode)) return "delta_od";
+  if (mode === "od" || mode === "filtered" || mode === "trimmed" || mode === "design" || mode === "glm" || isHemoglobinPlotMode(mode)) return "delta_od";
   return "intensity";
 }
 
@@ -1498,18 +1510,6 @@ function updatePipelineSummary() {
   const filterLabel = filterStepEnabled ? "Filter on" : "Filter off";
   const trimLabel = trimStepEnabled ? "Cut on" : "Cut off";
   pipelineSummaryEl.textContent = "Raw tab: intensity | Optical Density tab: delta OD | " + filterLabel + " | " + trimLabel + " | Hb tabs use MBLL";
-}
-
-function intensityToDeltaOd(series) {
-  if (!Array.isArray(series) || !series.length) return [];
-  // Method matches Homer3/NIRS-KIT intensity->OD: dOD = -log(|I| / mean(|I|)).
-  const safe = series.map(v => Math.abs(Number(v)));
-  const meanAbs = safe.reduce((sum, v) => sum + v, 0) / safe.length;
-  if (!Number.isFinite(meanAbs) || meanAbs <= 0) return series.slice();
-  return safe.map(v => {
-    const denom = v <= 0 ? Number.EPSILON : v;
-    return -Math.log(denom / meanAbs);
-  });
 }
 
 function getWavelengthNm(index) {
@@ -1582,41 +1582,10 @@ function getCurrentMbllConfig() {
   };
 }
 
-function deltaOdToHemoglobin(deltaOdWl1, deltaOdWl2, config) {
-  if (!config || !config.supported) return null;
-  const length = Math.min(
-    Array.isArray(deltaOdWl1) ? deltaOdWl1.length : 0,
-    Array.isArray(deltaOdWl2) ? deltaOdWl2.length : 0
-  );
-  if (!length) return { hbo: [], hbr: [], hbt: [] };
-
-  const rhoCm = config.distanceMm / 10.0;
-  const a11 = config.coeff1.hbo * rhoCm * config.dpf1;
-  const a12 = config.coeff1.hbr * rhoCm * config.dpf1;
-  const a21 = config.coeff2.hbo * rhoCm * config.dpf2;
-  const a22 = config.coeff2.hbr * rhoCm * config.dpf2;
-  const det = a11 * a22 - a12 * a21;
-
-  if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null;
-
-  const hbo = new Array(length);
-  const hbr = new Array(length);
-  const hbt = new Array(length);
-  for (let i = 0; i < length; i++) {
-    const d1 = Number(deltaOdWl1[i]) || 0;
-    const d2 = Number(deltaOdWl2[i]) || 0;
-    const hbOMm = (d1 * a22 - a12 * d2) / det;
-    const hbRMm = (a11 * d2 - d1 * a21) / det;
-    hbo[i] = hbOMm * 1000.0;
-    hbr[i] = hbRMm * 1000.0;
-    hbt[i] = hbo[i] + hbr[i];
-  }
-  return { hbo, hbr, hbt };
-}
-
 function resetProtocolUiOnly() {
   if (!data.wl1) return;
   taskConfig = { conditions: [] };
+  glmConfig = window.fnirsGlmConfig.normalize();
   if (taskPanel) taskPanel.refresh();
 
   currentWavelength = "wl1";
@@ -1657,7 +1626,8 @@ function resetProtocolUiOnly() {
 /* ================= Plotting ================= */
 
 function redraw() {
-  if (!data.wl1) return;
+  if (glmPanel) glmPanel.show(currentPlotMode);
+  if (currentPlotMode === "design" || currentPlotMode === "glm" || !data.wl1) return;
   const redrawStartMs = performance.now();
   debugLog("redraw:start", {
     currentWavelength,
@@ -2184,6 +2154,7 @@ function getProtocolBuildDeps() {
     datasetLabel,
     protocolLabel: branchTagInput ? branchTagInput.value.trim() : "",
     taskConfig,
+    glmConfig,
     currentWavelength,
     currentChannel,
     intervals: parseIntervals(exclusionTable ? exclusionTable.value : ""),
@@ -2272,6 +2243,7 @@ function importProtocol() {
 function applyProtocol(protocol) {
   const next = protocolApi.projectProtocolToUiState(protocol, getProtocolProjectionDeps());
   taskConfig = next.taskConfig;
+  glmConfig = next.glmConfig;
   if (taskPanel) taskPanel.refresh();
 
   if (branchTagInput) branchTagInput.value = next.protocolLabel;
@@ -2964,23 +2936,39 @@ function initPlotLayout() {
     { value: "trimmed", label: "Cut" },
     { value: "hbo", label: "HbO" },
     { value: "hbr", label: "HbR" },
-    { value: "hbt", label: "HbT" }
+    { value: "hbt", label: "HbT" },
+    { value: "design", label: "Design Matrix" },
+    { value: "glm", label: "GLM Fit" }
   ];
   plotTabBarEl = document.createElement("div");
   plotTabBarEl.className = "plot-tab-bar";
+  plotTabBarEl.setAttribute("role", "tablist");
+  plotTabBarEl.setAttribute("aria-label", "Analysis views");
   plotTabButtons = [];
   tabs.forEach(tab => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "plot-tab-btn";
     button.dataset.plotMode = tab.value;
+    button.id = "plot-tab-" + tab.value;
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-controls", tab.value === "design" || tab.value === "glm" ? "glmWorkspace" : "signalPanel");
     button.textContent = tab.label;
     button.onclick = () => setPlotMode(tab.value);
     plotTabBarEl.appendChild(button);
     plotTabButtons.push(button);
   });
 
+  plotTabBarEl.onkeydown = event => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault(); event.stopPropagation();
+    const index = plotTabButtons.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
+      : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    plotTabButtons[next].focus(); setPlotMode(tabs[next].value);
+  };
   const plotPanel = document.createElement("div");
+  plotPanel.id = "signalPanel"; plotPanel.setAttribute("role", "tabpanel");
   plotPanel.className = "plot-panel";
   plotHeaderEl = document.createElement("div");
   plotHeaderEl.className = "plot-header";
@@ -2993,6 +2981,13 @@ function initPlotLayout() {
   plotGrid.innerHTML = "";
   plotGrid.appendChild(plotTabBarEl);
   plotGrid.appendChild(plotPanel);
+  glmPanel = window.fnirsGlmPanel.create({
+    getState: getGlmRecordingState,
+    readSignals: () => ({ wl1: data.wl1.map(row => row[currentChannel]), wl2: data.wl2?.map(row => row[currentChannel]) }),
+    setConfig: next => { glmConfig = next; requestUiRedraw({ meta: true }); },
+    openTask: () => taskPanel.open(), selectTab: setPlotMode
+  });
+  plotGrid.appendChild(glmPanel.element);
   if (plotScrollerHost) {
     plotScrollerHost.textContent = "";
     plotScrollerHost.appendChild(plotScrollerEl);
@@ -3307,18 +3302,27 @@ function getFilterEngine() {
 
 function applyPlotMode() {
   if (!plotGrid) return;
+  const signalPanel = document.getElementById("signalPanel");
+  if (signalPanel) {
+    signalPanel.hidden = currentPlotMode === "design" || currentPlotMode === "glm";
+    signalPanel.setAttribute("aria-labelledby", "plot-tab-" + currentPlotMode);
+  }
+  if (glmPanel) glmPanel.show(currentPlotMode);
   plotTabButtons.forEach(button => {
     const active = button.dataset.plotMode === currentPlotMode;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
   });
   if (plotScrollerHost) {
-    plotScrollerHost.style.display = "";
+    plotScrollerHost.style.display = currentPlotMode === "design" || currentPlotMode === "glm" ? "none" : "";
   }
   rebuildRadioSelections();
 }
 
 function requestUiRedraw(options = {}) {
+  if (glmPanel) glmPanel.sync();
   uiRefreshNeedsMeta = uiRefreshNeedsMeta || !!options.meta;
   uiRefreshNeedsNavigation = uiRefreshNeedsNavigation || !!options.navigation;
   if (uiRefreshScheduled) return;
@@ -3357,13 +3361,6 @@ function groupChannelsBySource(labels) {
   });
 
   return Array.from(groups.entries()).map(([source, items]) => ({ source, items }));
-}
-
-function restoreDcMean(ref, x) {
-  if (!Array.isArray(ref) || !Array.isArray(x) || !ref.length || !x.length) return x;
-  const mean = arr => arr.reduce((sum, v) => sum + v, 0) / arr.length;
-  const delta = mean(ref) - mean(x);
-  return x.map(v => v + delta);
 }
 
 function applyConfiguredFilter(series, filterSpec, filterEngine, dcRestore) {

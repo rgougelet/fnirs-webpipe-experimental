@@ -14,6 +14,7 @@
       datasetLabel: deps.datasetLabel,
       protocolLabel: deps.protocolLabel || "",
       taskConfig: window.fnirsTaskEvents.normalizeConfig(deps.taskConfig),
+      glmConfig: window.fnirsGlmConfig.normalize(deps.glmConfig),
       selection: {
         wavelength: deps.currentWavelength,
         channelIndex: deps.currentChannel
@@ -170,6 +171,7 @@
       datasetLabel: raw && typeof raw.datasetLabel === "string" ? raw.datasetLabel : deps.datasetLabel,
       protocolLabel: raw && typeof raw.protocolLabel === "string" ? raw.protocolLabel : "",
       taskConfig: window.fnirsTaskEvents.normalizeConfig(raw && raw.taskConfig),
+      glmConfig: window.fnirsGlmConfig.normalize(raw && raw.glmConfig),
       selection: {
         wavelength: raw && raw.selection && raw.selection.wavelength === "wl1" ? "wl1" : "wl2",
         channelIndex: raw && raw.selection && Number.isFinite(Number(raw.selection.channelIndex))
@@ -312,6 +314,7 @@
     return {
       normalizedProtocol: normalized,
       taskConfig: normalized.taskConfig,
+      glmConfig: normalized.glmConfig,
       protocolLabel: normalized.protocolLabel || "",
       notes: normalized.notes || "",
       wavelength: normalized.selection.wavelength === "wl2" ? "wl2" : "wl1",
@@ -370,6 +373,7 @@
       protocolSchemaVersion: protocol.protocolSchemaVersion,
       protocolLabel: protocol.protocolLabel,
       taskConfig: protocol.taskConfig,
+      glmConfig: protocol.glmConfig,
       selection: protocol.selection,
       steps: protocol.steps,
       notes: protocol.notes,

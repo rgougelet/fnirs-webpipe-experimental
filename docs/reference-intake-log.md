@@ -1,5 +1,17 @@
 # Reference Intake Log
 
+## Batch: 2026-10-26 (GLM fitting)
+
+- MNE-NIRS documentation, version 0.7.1, accessed 2026-10-26:
+  - https://mne.tools/mne-nirs/stable/auto_examples/general/plot_10_hrf_simulation.html
+  - https://mne.tools/mne-nirs/stable/generated/mne_nirs.statistics.run_glm.html
+- Scope: task/drift/intercept modeling, known-response simulation, and the
+  distinction between OLS fitting and autoregressive noise models.
+- Usage: `reference_only`; implementation and tests independently written.
+- License status: no reuse rights relied on; no source code copied/adapted.
+- Applied in the GLM modules; conventions documented in `docs/glm-fitting.md`.
+
+
 ## Batch: 2026-10-15 (task design preview)
 
 - SNIRF specification: https://github.com/fNIRS/snirf

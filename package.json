@@ -1,6 +1,6 @@
 {
   "name": "fnirs-webpipe",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,8 @@
     "ui:capture": "node scripts/capture-ui.mjs",
     "ui:capture:matrix": "node scripts/capture-ui.mjs --preset=matrix",
     "ui:capture:light": "node scripts/capture-ui.mjs --theme=light",
-    "ui:install": "playwright install chromium"
+    "ui:install": "playwright install chromium",
+    "ui:test:glm": "node scripts/test-glm-ui.mjs"
   },
   "devDependencies": {
     "playwright": "^1.53.0"
@@ -22,5 +23,3 @@
     "uplot": "^1.6.32"
   }
 }
-
-
