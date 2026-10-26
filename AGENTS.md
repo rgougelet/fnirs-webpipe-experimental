@@ -96,3 +96,9 @@ Command meaning:
 - `npm run ui:install` installs Chromium for Playwright through one stable wrapper.
 
 If you are an agent entering this repo cold, assume local `main` is the working branch and that development should default toward the `experimental` remote unless the user explicitly says they are publishing production.
+
+Product copy policy:
+
+- Write impersonal interface text describing software functions, controls, data, units, and model limitations.
+- Keep conversation history, private research plans, and remarks addressed to the project owner out of the interface.
+- Apply the same standard to public user documentation.

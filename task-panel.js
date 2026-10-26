@@ -142,7 +142,7 @@
       const dataset = source();
       recordingButton.disabled = !options.getRecording();
       description.textContent = demoMode
-        ? "SYNTHETIC EXAMPLE: six illustrative 8 s blocks in a 180 s recording. This is not the Brazil study protocol. Your recording and its settings remain separate."
+        ? "Synthetic example: six 8 s blocks in a 180 s recording."
         : "Recording: " + (dataset ? dataset.label : "none") + ". Inspect condition timing before specifying a GLM.";
       renderForm();
       refreshPreview();

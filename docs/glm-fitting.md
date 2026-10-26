@@ -19,8 +19,7 @@ Available in v0.5.0. All computations run locally in a browser worker.
 
 **Synthetic example** creates an isolated 180 s six-block recording with
 known HbO/HbR responses, linear drift, and small deterministic additive noise.
-Its drift setting does not change the recording's protocol. Its task is
-illustrative and does not implement the Brazil study protocol.
+Synthetic task settings are independent of recording protocols.
 
 ## Model and preprocessing
 

@@ -2,8 +2,6 @@
 
 Open **Task Design > Open task design**. A recording supplies the events;
 **Synthetic example** provides a separate illustrative 180 s, six-block task.
-The synthetic example does not implement the Brazil study protocol and does
-not modify the loaded recording or its task configuration.
 
 ## Event semantics
 
